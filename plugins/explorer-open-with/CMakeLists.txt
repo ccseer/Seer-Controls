@@ -29,35 +29,21 @@ add_test(NAME shellopenwith_test
     COMMAND shellopenwith_test $<TARGET_FILE:shellopenwith>
 )
 
-set(OPENWITH_MANIFEST_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/manifest-stage)
-add_custom_command(
-    OUTPUT
-        ${OPENWITH_MANIFEST_STAGING_DIR}/plugin.json
-        ${OPENWITH_MANIFEST_STAGING_DIR}/shellopenwith.exe
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${OPENWITH_MANIFEST_STAGING_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json
-        ${OPENWITH_MANIFEST_STAGING_DIR}/plugin.json
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:shellopenwith>
-        ${OPENWITH_MANIFEST_STAGING_DIR}/shellopenwith.exe
-    DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json
-        shellopenwith
-    VERBATIM
-)
-add_custom_target(openwith_manifest_stage
-    DEPENDS
-        ${OPENWITH_MANIFEST_STAGING_DIR}/plugin.json
-        ${OPENWITH_MANIFEST_STAGING_DIR}/shellopenwith.exe
-)
-
 add_executable(openwith_manifest_test test/manifest_test.cpp)
-add_dependencies(openwith_manifest_test openwith_manifest_stage)
 target_include_directories(openwith_manifest_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
 )
-add_test(NAME openwith_manifest_test COMMAND openwith_manifest_test ${OPENWITH_MANIFEST_STAGING_DIR})
 
-install(TARGETS shellopenwith RUNTIME DESTINATION .)
-install(FILES plugin.json DESTINATION .)
+set(OPENWITH_MANIFEST_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/manifest-stage)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/PackageStaging.cmake)
+seer_control_package_staging(
+    PACKAGE_ID io.1218.seer.explorer-open-with
+    PACKAGE_NAME "Open With"
+    COMMAND_NAME shellopenwith.exe
+    COMMAND_TARGET shellopenwith
+    EXTENSION_TOKEN "\${type_file}"
+    TEST_TARGET openwith_manifest_test
+    STAGE_TARGET openwith_manifest_stage
+    PACKAGE_TARGET openwith_package
+    STAGING_DIR ${OPENWITH_MANIFEST_STAGING_DIR}
+)

@@ -465,6 +465,15 @@ inline bool load(const std::filesystem::path &packageRoot,
           std::string(label) + ": staged command is non-empty");
     check(isWithin(root, package->commandPath),
           std::string(label) + ": staged command stays inside the package root");
+
+    const auto readmePath
+        = std::filesystem::weakly_canonical(root / "README.md", code);
+    check(!code && std::filesystem::is_regular_file(readmePath),
+          std::string(label) + ": staged README.md exists as a regular file");
+    const auto readmeSize
+        = std::filesystem::file_size(readmePath, sizeCode);
+    check(!sizeCode && readmeSize > 0,
+          std::string(label) + ": staged README.md is non-empty");
     return true;
 }
 

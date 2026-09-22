@@ -1,7 +1,6 @@
 # Shared staging and install-time contract validation for the native Control
-# packages. Every package stages the same two files (plugin.json plus one
-# helper executable) and wires the same ctest and package targets, so the
-# machinery lives here and each package passes only its fixed identity.
+# packages. Every package stages the manifest (plugin.json), one helper
+# executable, and the user-facing README.md (staged/renamed from PACKAGE_README.md).
 #
 # Usage in a package CMakeLists.txt (after the manifest test executable has
 # been declared with its own includes and dependencies):
@@ -48,10 +47,16 @@ function(seer_control_package_staging)
         endif()
     endforeach()
 
+    set(_package_readme "${CMAKE_CURRENT_SOURCE_DIR}/PACKAGE_README.md")
+    if(NOT EXISTS "${_package_readme}")
+        message(FATAL_ERROR "${PKG_PACKAGE_NAME}: missing PACKAGE_README.md in ${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+
     add_custom_command(
         OUTPUT
             ${PKG_STAGING_DIR}/plugin.json
             ${PKG_STAGING_DIR}/${PKG_COMMAND_NAME}
+            ${PKG_STAGING_DIR}/README.md
         COMMAND ${CMAKE_COMMAND} -E make_directory ${PKG_STAGING_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json
@@ -59,13 +64,20 @@ function(seer_control_package_staging)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:${PKG_COMMAND_TARGET}>
             ${PKG_STAGING_DIR}/${PKG_COMMAND_NAME}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json ${PKG_COMMAND_TARGET}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${_package_readme}
+            ${PKG_STAGING_DIR}/README.md
+        DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json
+            ${_package_readme}
+            ${PKG_COMMAND_TARGET}
         VERBATIM
     )
     add_custom_target(${PKG_STAGE_TARGET}
         DEPENDS
             ${PKG_STAGING_DIR}/plugin.json
             ${PKG_STAGING_DIR}/${PKG_COMMAND_NAME}
+            ${PKG_STAGING_DIR}/README.md
     )
 
     add_dependencies(${PKG_TEST_TARGET} ${PKG_STAGE_TARGET})
@@ -80,6 +92,7 @@ function(seer_control_package_staging)
 
     install(TARGETS ${PKG_COMMAND_TARGET} RUNTIME DESTINATION .)
     install(FILES plugin.json DESTINATION .)
+    install(FILES "${_package_readme}" DESTINATION . RENAME README.md)
 
     # Double-quoted string on purpose: ${PKG_*} expands at configure time and
     # every \${...} stays literal until the generated install script runs, so
@@ -90,8 +103,9 @@ function(seer_control_package_staging)
         file(REAL_PATH \"\${_package_root}\" _package_root_real)
         set(_manifest \"\${_package_root_real}/plugin.json\")
         set(_helper \"\${_package_root_real}/${PKG_COMMAND_NAME}\")
+        set(_readme \"\${_package_root_real}/README.md\")
 
-        foreach(_required IN ITEMS \"\${_manifest}\" \"\${_helper}\")
+        foreach(_required IN ITEMS \"\${_manifest}\" \"\${_helper}\" \"\${_readme}\")
             if(NOT EXISTS \"\${_required}\" OR IS_DIRECTORY \"\${_required}\")
                 message(FATAL_ERROR \"${PKG_PACKAGE_NAME} package is missing \${_required}\")
             endif()

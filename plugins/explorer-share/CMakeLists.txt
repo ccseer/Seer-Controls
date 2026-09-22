@@ -38,37 +38,23 @@ target_include_directories(share_test PRIVATE
 target_link_libraries(share_test PRIVATE share_core)
 add_test(NAME share_test COMMAND share_test)
 
-set(SHARE_MANIFEST_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/manifest-stage)
-add_custom_command(
-    OUTPUT
-        ${SHARE_MANIFEST_STAGING_DIR}/plugin.json
-        ${SHARE_MANIFEST_STAGING_DIR}/seer_share.exe
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHARE_MANIFEST_STAGING_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json
-        ${SHARE_MANIFEST_STAGING_DIR}/plugin.json
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:seer_share>
-        ${SHARE_MANIFEST_STAGING_DIR}/seer_share.exe
-    DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json
-        seer_share
-    VERBATIM
-)
-add_custom_target(share_manifest_stage
-    DEPENDS
-        ${SHARE_MANIFEST_STAGING_DIR}/plugin.json
-        ${SHARE_MANIFEST_STAGING_DIR}/seer_share.exe
-)
-
 add_executable(share_manifest_test test/manifest_test.cpp)
-add_dependencies(share_manifest_test share_manifest_stage)
 target_include_directories(share_manifest_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/../common
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
 )
-add_test(NAME share_manifest_test COMMAND share_manifest_test ${SHARE_MANIFEST_STAGING_DIR})
 
-install(TARGETS seer_share RUNTIME DESTINATION .)
-install(FILES plugin.json DESTINATION .)
+set(SHARE_MANIFEST_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/manifest-stage)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/PackageStaging.cmake)
+seer_control_package_staging(
+    PACKAGE_ID io.1218.seer.explorer-share
+    PACKAGE_NAME "Share"
+    COMMAND_NAME seer_share.exe
+    COMMAND_TARGET seer_share
+    EXTENSION_TOKEN "\${type_file}"
+    TEST_TARGET share_manifest_test
+    STAGE_TARGET share_manifest_stage
+    PACKAGE_TARGET share_package
+    STAGING_DIR ${SHARE_MANIFEST_STAGING_DIR}
+)
