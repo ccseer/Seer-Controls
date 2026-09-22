@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "io.1218.seer.file-lock-info",
+  "name": "Who Is Locking This File?",
+  "description": "Shows which applications or services are using the current file.",
+  "version": "1.0.0",
+  "appMinVersion": "4.5.10",
+  "backend": "process",
+  "capabilities": ["control"],
+  "extensions": ["${type_file}"],
+  "command": "file_lock_info.exe",
+  "arguments": ["--input", "${input_file}"],
+  "timeout_ms": 120000,
+  "success_exit_codes": [0]
+}

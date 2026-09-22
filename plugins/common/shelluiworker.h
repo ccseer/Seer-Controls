@@ -15,7 +15,7 @@
 
 // Launcher side of the two-process UI handoff for the controls whose worker
 // layout is a fixed `--input <path>` triple. Helpers with arbitrary option lists
-// use UiHandoff in winui.h instead.
+// use the shared launcher instead.
 namespace ShellUiWorker {
 // How a helper explains a refusal. Both handoff callers -- the validator and the
 // showing half -- receive one, and packages that run the same code in the

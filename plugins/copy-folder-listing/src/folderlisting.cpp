@@ -11,7 +11,6 @@
 #include "winexit.h"
 #include "winpath.h"
 #include "wintext.h"
-#include "winui.h"
 
 namespace folderlisting {
 
@@ -400,13 +399,13 @@ ListingResult run(const std::vector<std::wstring> &arguments)
         outcome.message  = error;
         // The host surfaces the captured stderr of a failed Control action in
         // a toast, so the reason is written there instead of a window.
-        UiHandoff::reportFailure(outcome.message);
+        WinText::writeStandardError(outcome.message);
         return outcome;
     }
 
     const auto result = run(*request, systemClipboardWriter());
     if (!result.ok) {
-        UiHandoff::reportFailure(result.message);
+        WinText::writeStandardError(result.message);
         return result;
     }
 

@@ -7,7 +7,6 @@
 #include "winpath.h"
 #include "winproc.h"
 #include "wintext.h"
-#include "winui.h"
 
 namespace terminalhere {
 
@@ -438,20 +437,20 @@ int run(const std::vector<std::wstring> &arguments, const ShellLocator &locator)
     if (!request) {
         // The host surfaces the captured stderr of a failed Control action in
         // a toast, so the reason is written there instead of a window.
-        UiHandoff::reportFailure(error);
+        WinText::writeStandardError(error);
         return WinExit::kUsage;
     }
 
     const auto planned = plan(*request, locator);
     if (!planned.ok) {
-        UiHandoff::reportFailure(planned.message);
+        WinText::writeStandardError(planned.message);
         return planned.exitCode;
     }
 
     std::wstring message;
     const int code = execute(planned.plan, &message);
     if (code != WinExit::kOk) {
-        UiHandoff::reportFailure(message);
+        WinText::writeStandardError(message);
     }
     return code;
 }

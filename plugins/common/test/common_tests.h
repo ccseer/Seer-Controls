@@ -8,16 +8,13 @@
 #include <utility>
 #include <vector>
 
-#include "shelluiworker.h"
 #include "winclip.h"
 #include "wincmd.h"
 #include "winpath.h"
 #include "winproc.h"
 #include "wintext.h"
-#include "winui.h"
 
 #include "fileprobe.h"
-#include "stderrharness.h"
 #include "testharness.h"
 
 // Shared assertions for the native Control packages.
@@ -402,176 +399,6 @@ inline void testClipboard()
     }
 }
 
-inline BOOL CALLBACK findTopLevelWindow(HWND window, LPARAM data)
-{
-    auto *payload = reinterpret_cast<std::pair<DWORD, bool *> *>(data);
-    DWORD pid     = 0;
-    GetWindowThreadProcessId(window, &pid);
-    if (pid == payload->first && IsWindowVisible(window)
-        && GetWindow(window, GW_OWNER) == nullptr) {
-        *payload->second = true;
-        return FALSE;
-    }
-    return TRUE;
-}
-
-inline BOOL CALLBACK closeWindowForProcess(HWND window, LPARAM data)
-{
-    const auto pid = *reinterpret_cast<DWORD *>(data);
-    DWORD owner    = 0;
-    GetWindowThreadProcessId(window, &owner);
-    if (owner == pid && IsWindowVisible(window)
-        && GetWindow(window, GW_OWNER) == nullptr) {
-        PostMessageW(window, WM_CLOSE, 0, 0);
-        return FALSE;
-    }
-    return TRUE;
-}
-
-// Exercises the two-process UI readiness contract end to end: the parent must
-// not report success before a real window exists, and closing the window must
-// end the worker cleanly.
-inline void testUiReadinessHandoff(const std::wstring &testExecutable)
-{
-    if (testExecutable.empty()) {
-        check(false, "test executable path was provided by the build");
-        return;
-    }
-    const std::wstring eventName
-        = std::wstring(L"Local\\SeerControlCommonTest-")
-          + std::to_wstring(GetCurrentProcessId()) + L"-"
-          + std::to_wstring(GetTickCount64());
-    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, eventName.c_str());
-    if (!ready) {
-        check(false, "readiness event created");
-        return;
-    }
-
-    WinProc::LaunchOptions options;
-    options.detached            = true;
-    options.suspended           = true;
-    options.tryBreakawayFromJob = true;
-    WinProc::Child child;
-    std::wstring error;
-    const bool started = WinProc::createChild(
-        testExecutable,
-        {UiHandoff::kMessageFlag, UiHandoff::kMessageEventFlag, eventName,
-         UiHandoff::kTitleFlag, L"Seer control common test",
-         UiHandoff::kHeadingFlag, L"UI readiness",
-         UiHandoff::kBodyFlag, L"bounded body"},
-        options, nullptr, &child, &error);
-    if (!started) {
-        check(false, "UI worker started: " + WinText::toUtf8(error));
-        CloseHandle(ready);
-        return;
-    }
-    WinProc::resumeChild(&child, &error);
-
-    bool readySignalled = false;
-    const ULONGLONG deadline = GetTickCount64() + 15000;
-    while (GetTickCount64() < deadline) {
-        if (WaitForSingleObject(ready, 100) == WAIT_OBJECT_0) {
-            readySignalled = true;
-            break;
-        }
-        if (WaitForSingleObject(child.process, 0) == WAIT_OBJECT_0) {
-            break;
-        }
-    }
-    check(readySignalled, "UI worker signalled readiness");
-
-    bool visible = false;
-    if (readySignalled) {
-        std::pair<DWORD, bool *> payload{child.pid, &visible};
-        for (int attempt = 0; attempt < 40 && !visible; ++attempt) {
-            EnumWindows(findTopLevelWindow,
-                        reinterpret_cast<LPARAM>(&payload));
-            if (!visible) {
-                Sleep(50);
-            }
-        }
-    }
-    check(visible, "a visible top-level window exists for the UI worker");
-
-    if (visible) {
-        DWORD pid = child.pid;
-        EnumWindows(closeWindowForProcess, reinterpret_cast<LPARAM>(&pid));
-        DWORD code = 1;
-        const bool exited = WinProc::waitForExit(child, 10000, &code);
-        check(exited && code == 0,
-              "the UI worker exited cleanly after its window closed");
-    }
-
-    if (child.running()) {
-        WinProc::terminateChild(&child);
-    }
-    CloseHandle(ready);
-}
-
-inline void testUiHandoffRejectsInvalidArguments(
-    const std::vector<std::wstring> &arguments)
-{
-    int showCalls = 0;
-    // Captured so the refusal the launcher writes for the host stays out of
-    // ctest output, and so the contract is asserted rather than hoped for: a
-    // refusal that only changes the exit code is exactly the silent failure
-    // the reason channel exists to prevent.
-    StderrHarness::Capture capture;
-    const int result = UiHandoff::run(
-        arguments,
-        [](const std::vector<std::wstring> &) {
-            return std::optional<std::wstring>(
-                L"the request was refused by validation");
-        },
-        [&](const std::vector<std::wstring> &,
-            const std::function<void()> &, const UiHandoff::ErrorReport &) {
-            ++showCalls;
-            return 0;
-        });
-    const auto written = capture.drain();
-    check(result == 2, "the handoff reports a usage failure for bad input");
-    check(showCalls == 0, "no UI is created for invalid input");
-    check(written.find("the request was refused by validation")
-              != std::string::npos,
-          "a launcher-side refusal explains itself on the stderr the host "
-          "reads");
-
-    // The worker half refuses through the launcher's reason channel, because a
-    // detached worker has no stderr the host could read. The launcher's half of
-    // the handoff is stood up here first, since the worker publishes nowhere
-    // else; the stderr copy the worker also writes is captured for the same
-    // reason as above.
-    {
-        const std::wstring eventName
-            = std::wstring(L"Local\\SeerControlCommonTest-refusal-")
-              + std::to_wstring(GetCurrentProcessId());
-        ShellUiWorker::Handle ready(
-            CreateEventW(nullptr, TRUE, FALSE, eventName.c_str()));
-        const auto channel = ShellUiWorker::createReasonChannel(eventName);
-        check(static_cast<bool>(ready) && static_cast<bool>(channel),
-              "the worker half of the handoff can be stood up");
-
-        StderrHarness::Capture workerCapture;
-        const int workerResult = UiHandoff::run(
-            {L"helper.exe", UiHandoff::kReadyFlag, eventName},
-            [](const std::vector<std::wstring> &) {
-                return std::optional<std::wstring>(
-                    L"the worker refused the request");
-            },
-            [&](const std::vector<std::wstring> &,
-                const std::function<void()> &, const UiHandoff::ErrorReport &) {
-                ++showCalls;
-                return 0;
-            });
-        workerCapture.drain();
-        check(workerResult == 2,
-              "a worker-side refusal keeps the usage exit code");
-        check(ShellUiWorker::readReason(channel)
-                  == L"the worker refused the request",
-              "a worker-side refusal is published on the launcher's channel");
-    }
-    check(showCalls == 0, "no UI is created for a refused request");
-}
 
 inline void testOptionScanner()
 {
@@ -618,8 +445,7 @@ inline void testTextHelpers()
           "bound truncates an oversized message");
 }
 
-inline int run(const std::wstring &testExecutable,
-               const std::wstring &probeChild)
+inline int run(const std::wstring &probeChild)
 {
     const std::wstring root = tempRoot();
     makeDirectory(root);
@@ -641,9 +467,6 @@ inline int run(const std::wstring &testExecutable,
     TestHarness::section("common: child argument and job boundary");
     testChildArgumentBoundary(probeChild, root);
     testJobContainmentKillsWholeJob(probeChild, root);
-    TestHarness::section("common: UI readiness handoff");
-    testUiHandoffRejectsInvalidArguments({L"helper.exe"});
-    testUiReadinessHandoff(testExecutable);
     return 0;
 }
 

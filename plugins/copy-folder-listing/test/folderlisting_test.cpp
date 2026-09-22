@@ -12,7 +12,6 @@
 #include "winexit.h"
 #include "winpath.h"
 #include "wintext.h"
-#include "winui.h"
 
 #include "testharness.h"
 
@@ -606,21 +605,8 @@ int main(int argc, char *argv[])
     const HRESULT comResult = CoInitializeEx(
         nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
-    const auto arguments = WinCmd::commandLineArguments();
-    if (UiHandoff::isMessageInvocation(arguments)) {
-        const int result = UiHandoff::runMessageWorker(arguments);
-        if (SUCCEEDED(comResult)) {
-            CoUninitialize();
-        }
-        return result;
-    }
-
-    std::wstring testExecutable;
     std::wstring probeChild;
     std::wstring helperExecutable;
-    if (argc > 1) {
-        testExecutable = WinText::fromUtf8(argv[1]);
-    }
     if (argc > 2) {
         probeChild = WinText::fromUtf8(argv[2]);
     }
@@ -652,7 +638,7 @@ int main(int argc, char *argv[])
     TestHarness::section("copy-folder-listing: helper process");
     testHelperProcess(helperExecutable);
 
-    CommonTests::run(testExecutable, probeChild);
+    CommonTests::run(probeChild);
 
     if (SUCCEEDED(comResult)) {
         CoUninitialize();

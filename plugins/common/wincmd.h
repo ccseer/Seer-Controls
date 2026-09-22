@@ -14,7 +14,7 @@
 //
 // ShellUiWorker::run() keeps its fixed three-argument worker layout for the
 // controls that shipped before it. Helpers with arbitrary option lists use the
-// launcher in winui.h and the scanner below instead, so the old controls keep
+// shared launcher and the scanner below instead, so the old controls keep
 // their existing argument contract byte for byte.
 namespace WinCmd {
 
