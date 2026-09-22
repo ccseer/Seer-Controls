@@ -23,7 +23,7 @@ Agent boundary:
 - `plugins/<name>/` — one directory per deployable package. Each is a
   standalone CMake project configured and tested on its own.
 - `plugins/common/` — header-only shared build code (`controlentry.h`,
-  `shelluiworker.h`, `winui.h`, `wincmd.h`, `winpath.h`, `winproc.h`,
+  `shelluiworker.h`, `wincmd.h`, `winpath.h`, `winproc.h`,
   `winclip.h`, `winexit.h`, `wintext.h`) plus `test/` (check harness,
   cross-process probe fixture, shared and manifest/staging assertions). It is
   NOT a deployable package and NOT a separately discoverable plugin.
@@ -97,9 +97,6 @@ Additional constraints:
   additional runtime files). Avoid dependencies that force dynamically linked
   DLLs or external downloads; if no such library exists and a dynamic or
   external dependency is unavoidable, document why in the package README.
-- The optimizers used by Image Optimization (pngquant, cwebp, jpegoptim) are
-  the one deliberate exception: third-party executables that are never bundled
-  or downloaded; the package reports which one is missing instead of guessing.
 - Sources are UTF-8 without a byte order mark; MSVC builds pass `/utf-8`.
 - Treat warnings as errors (`/W4 /WX`) in package targets.
 
@@ -165,10 +162,12 @@ ctest --preset default
 
 - One preview/host instance binds to one invocation; helpers never assume
   shared mutable state between invocations.
-- Helpers that open a window use the two-process UI handoff (`winui.h` /
-  `shelluiworker.h`): the launcher returns as soon as the worker signals
-  readiness, and the worker owns the window for its whole lifetime so the
-  host timeout never bounds user interaction.
+- Helpers keep a system-owned dialog open with the two-process UI handoff
+  (`shelluiworker.h`): the launcher returns as soon as the worker signals
+  readiness, and the worker owns the dialog for its whole lifetime so the
+  host timeout never bounds user interaction. Helpers never draw a window of
+  their own; results reach the user through the exit code, stderr, the
+  clipboard or a system dialog.
 - Completion is reported through the helper's exit code against the manifest's
   `success_exit_codes`; standard output is never rendered by the host.
 - Each package README documents every option, the dependency policy, what a
