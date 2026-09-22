@@ -303,20 +303,6 @@ inline bool isReparsePoint(const std::wstring &path)
            && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
-// Volume root used to place a caller-owned scratch directory on the same volume
-// as a target, so a later rename stays a same-volume move.
-inline bool volumeRootOf(const std::wstring &path, std::wstring *result)
-{
-    const std::wstring native = addExtendedPrefix(nativeSeparators(path));
-    std::vector<wchar_t> buffer(MAX_PATH + 10, L'\0');
-    const DWORD written = GetVolumePathNameW(native.c_str(), buffer.data(),
-                                             static_cast<DWORD>(buffer.size()));
-    if (written == 0) {
-        return false;
-    }
-    *result = std::wstring(buffer.data(), written);
-    return true;
-}
 
 struct DirectoryEntry {
     std::wstring name;
@@ -364,20 +350,6 @@ inline bool makeDirectoryTree(const std::wstring &path)
     return isDirectory(normalized);
 }
 
-// Creates an application-owned root directory and marks it hidden, so a private
-// results folder does not clutter the user's profile.
-inline bool makeOwnedRootIfNeeded(const std::wstring &path)
-{
-    if (isDirectory(path)) {
-        return true;
-    }
-    if (!makeDirectoryTree(path)) {
-        return false;
-    }
-    SetFileAttributesW(addExtendedPrefix(path).c_str(),
-                       FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED);
-    return true;
-}
 
 // A directory counts as writable only if it (and any missing parents) can be
 // created and a probe file can be created and deleted inside it. The probe is
@@ -468,20 +440,6 @@ inline OwnedRoot resolveOwnedRoot(const std::wstring &executableDirectory,
     return result;
 }
 
-// Creation time as a 64-bit FILETIME, used to order retained results without
-// trusting the directory name. Returns 0 when it cannot be read, which callers
-// must treat as "unknown" rather than "oldest".
-inline unsigned long long creationTimeOf(const std::wstring &path)
-{
-    WIN32_FILE_ATTRIBUTE_DATA data{};
-    if (!GetFileAttributesExW(addExtendedPrefix(path).c_str(),
-                              GetFileExInfoStandard, &data)) {
-        return 0;
-    }
-    return (static_cast<unsigned long long>(data.ftCreationTime.dwHighDateTime)
-            << 32)
-           | data.ftCreationTime.dwLowDateTime;
-}
 
 inline bool enumerateDirectory(const std::wstring &directory,
                                std::vector<DirectoryEntry> *entries,
@@ -675,7 +633,7 @@ public:
         m_directory  = stripTrailingSeparators(nativeSeparators(directory));
         m_ownerTag   = ownerTag;
         m_purposeTag = purposeTag;
-        m_token      = readField(m_directory, L"token=");
+        m_token      = readField(markerPath(), L"token=");
         m_valid      = true;
         return true;
     }

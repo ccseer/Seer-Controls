@@ -56,14 +56,6 @@ inline bool startsWithIgnoreCase(const std::wstring &value,
            && compareIgnoreCase(value.substr(0, prefix.size()), prefix) == 0;
 }
 
-inline bool endsWithIgnoreCase(const std::wstring &value,
-                               const std::wstring &suffix)
-{
-    return value.size() >= suffix.size()
-           && compareIgnoreCase(value.substr(value.size() - suffix.size()),
-                                suffix)
-                  == 0;
-}
 
 inline bool isSpace(const wchar_t character)
 {
@@ -145,23 +137,6 @@ inline std::wstring fromUtf8(const std::string &value)
     return result;
 }
 
-inline std::wstring widen(const std::string &value)
-{
-    return fromUtf8(value);
-}
-
-inline std::wstring join(const std::vector<std::wstring> &parts,
-                         const std::wstring &separator)
-{
-    std::wstring result;
-    for (size_t index = 0; index < parts.size(); ++index) {
-        if (index != 0) {
-            result += separator;
-        }
-        result += parts[index];
-    }
-    return result;
-}
 
 inline std::vector<std::wstring> splitLines(const std::wstring &value)
 {
@@ -184,26 +159,6 @@ inline std::vector<std::wstring> splitLines(const std::wstring &value)
     return lines;
 }
 
-inline std::wstring replaceAll(const std::wstring &value,
-                               const std::wstring &needle,
-                               const std::wstring &replacement)
-{
-    if (needle.empty()) {
-        return value;
-    }
-    std::wstring result;
-    size_t position = 0;
-    for (;;) {
-        const auto found = value.find(needle, position);
-        if (found == std::wstring::npos) {
-            result += value.substr(position);
-            return result;
-        }
-        result += value.substr(position, found - position);
-        result += replacement;
-        position = found + needle.size();
-    }
-}
 
 // Bounds a diagnostic before it reaches a message box or a report window so a
 // multi-megabyte stderr capture cannot create an unusable UI.
@@ -248,16 +203,5 @@ inline void writeStandardError(const std::wstring &message,
               static_cast<DWORD>(encoded.size()), &written, nullptr);
 }
 
-inline std::wstring fromCodePoint(const unsigned long codePoint)
-{
-    if (codePoint <= 0xFFFFUL) {
-        return std::wstring(1, static_cast<wchar_t>(codePoint));
-    }
-    const unsigned long adjusted = codePoint - 0x10000UL;
-    std::wstring result;
-    result += static_cast<wchar_t>(0xD800UL + (adjusted >> 10));
-    result += static_cast<wchar_t>(0xDC00UL + (adjusted & 0x3FFUL));
-    return result;
-}
 
 }  // namespace WinText

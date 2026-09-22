@@ -15,6 +15,11 @@ inline constexpr UINT kInitialEntries = 16;
 inline constexpr UINT kMaximumEntries = 4096;
 inline constexpr int kMaximumAttempts = 6;
 
+// Presentation bound: each holding process renders 5-6 lines of details.
+// Bounding the displayed entries keeps the modal message box within standard
+// screen bounds and ensures the OK button remains reachable.
+inline constexpr size_t kMaxDisplayUsers = 3;
+
 struct LockUser {
     std::wstring applicationType;
     std::wstring name;

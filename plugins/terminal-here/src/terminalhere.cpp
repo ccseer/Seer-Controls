@@ -396,6 +396,7 @@ int execute(const LaunchPlan &launchPlan, std::wstring *message)
     options.workingDirectory    = launchPlan.workingDirectory;
     options.newConsole          = true;
     options.tryBreakawayFromJob = true;
+    options.suspended           = true;
 
     WinProc::Child child;
     std::wstring error;

@@ -54,56 +54,22 @@ add_test(NAME folderlisting_test
         $<TARGET_FILE:copy_folder_listing>
 )
 
-set(LISTING_PACKAGE_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/package-stage)
-add_custom_command(
-    OUTPUT
-        ${LISTING_PACKAGE_STAGING_DIR}/plugin.json
-        ${LISTING_PACKAGE_STAGING_DIR}/copy_folder_listing.exe
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${LISTING_PACKAGE_STAGING_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json
-        ${LISTING_PACKAGE_STAGING_DIR}/plugin.json
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:copy_folder_listing>
-        ${LISTING_PACKAGE_STAGING_DIR}/copy_folder_listing.exe
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/plugin.json copy_folder_listing
-    VERBATIM
-)
-add_custom_target(folderlisting_manifest_stage
-    DEPENDS
-        ${LISTING_PACKAGE_STAGING_DIR}/plugin.json
-        ${LISTING_PACKAGE_STAGING_DIR}/copy_folder_listing.exe
-)
-
 add_executable(folderlisting_manifest_test test/manifest_test.cpp)
-add_dependencies(folderlisting_manifest_test folderlisting_manifest_stage)
 target_include_directories(folderlisting_manifest_test PRIVATE ${SEER_CONTROL_TEST_DIR})
 if(MSVC)
     target_compile_options(folderlisting_manifest_test PRIVATE /W4 /WX)
 endif()
-add_test(NAME folderlisting_manifest_test
-    COMMAND folderlisting_manifest_test ${LISTING_PACKAGE_STAGING_DIR}
-)
-add_custom_target(folderlisting_package
-    COMMAND $<TARGET_FILE:folderlisting_manifest_test> ${LISTING_PACKAGE_STAGING_DIR}
-    DEPENDS folderlisting_manifest_test
-    VERBATIM
-)
 
-install(TARGETS copy_folder_listing RUNTIME DESTINATION .)
-install(FILES plugin.json DESTINATION .)
-# The field-level package contract is owned by folderlisting_manifest_test,
-# which reads the staged manifest the way the host loader does; the install
-# step only proves the shipped files are present.
-install(CODE [=[
-    set(_package_root "${CMAKE_INSTALL_PREFIX}")
-    file(REAL_PATH "${_package_root}" _package_root_real)
-    set(_manifest "${_package_root_real}/plugin.json")
-    set(_helper "${_package_root_real}/copy_folder_listing.exe")
-
-    foreach(_required IN ITEMS "${_manifest}" "${_helper}")
-        if(NOT EXISTS "${_required}" OR IS_DIRECTORY "${_required}")
-            message(FATAL_ERROR "Copy Folder Listing package is missing ${_required}")
-        endif()
-    endforeach()
-]=])
+set(LISTING_PACKAGE_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/package-stage)
+include(${SEER_CONTROL_COMMON_DIR}/PackageStaging.cmake)
+seer_control_package_staging(
+    PACKAGE_ID io.1218.seer.copy-folder-listing
+    PACKAGE_NAME "Copy Folder Listing"
+    COMMAND_NAME copy_folder_listing.exe
+    COMMAND_TARGET copy_folder_listing
+    EXTENSION_TOKEN "\${type_folder}"
+    TEST_TARGET folderlisting_manifest_test
+    STAGE_TARGET folderlisting_manifest_stage
+    PACKAGE_TARGET folderlisting_package
+    STAGING_DIR ${LISTING_PACKAGE_STAGING_DIR}
+)

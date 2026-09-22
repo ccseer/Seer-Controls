@@ -1,6 +1,7 @@
 #pragma once
 
 #include <windows.h>
+#include <objbase.h>
 #include <shellapi.h>
 #include <shlobj.h>
 
@@ -636,6 +637,8 @@ inline ElevationOutcome runElevated(const std::wstring &executablePath,
 
     std::thread worker([outcome, done, executablePath, arguments,
                         workingDirectory] {
+        const HRESULT hr = CoInitializeEx(
+            nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
         const std::wstring parameters = WinCmd::joinArguments(arguments);
         SHELLEXECUTEINFOW info{};
         info.cbSize = sizeof(info);
@@ -666,6 +669,9 @@ inline ElevationOutcome runElevated(const std::wstring &executablePath,
         }
         outcome->completed = true;
         SetEvent(done.get());
+        if (SUCCEEDED(hr)) {
+            CoUninitialize();
+        }
     });
 
     const DWORD wait = WaitForSingleObject(done.get(), timeoutMs);
@@ -684,29 +690,6 @@ inline ElevationOutcome runElevated(const std::wstring &executablePath,
     return timedOut;
 }
 
-// Opens Explorer with the object selected. Kept separate from
-// "explorer.exe /select," so no quoting rule is applied twice.
-inline bool revealInExplorer(const std::wstring &path, std::wstring *error)
-{
-    PIDLIST_ABSOLUTE item = nullptr;
-    const std::wstring open
-        = WinPath::addExtendedPrefix(WinPath::nativeSeparators(path));
-    if (FAILED(SHParseDisplayName(open.c_str(), nullptr, &item, 0, nullptr))) {
-        if (error) {
-            *error = L"cannot resolve '" + path + L"' for Explorer";
-        }
-        return false;
-    }
-    const HRESULT result = SHOpenFolderAndSelectItems(item, 0, nullptr, 0);
-    CoTaskMemFree(item);
-    if (FAILED(result)) {
-        if (error) {
-            *error = L"Explorer could not select '" + path + L"'";
-        }
-        return false;
-    }
-    return true;
-}
 
 // True when the process owns at least one visible unowned top-level window.
 //

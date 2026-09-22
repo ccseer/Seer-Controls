@@ -425,6 +425,13 @@ inline void testOptionScanner()
         {L"helper.exe", L"--input", L"a", L"--input", L"b"}, 1, {}, {L"input"});
     check(duplicated.ok && !duplicated.duplicates.empty(),
           "option scan records a duplicated option");
+
+    const auto slashPositional = WinCmd::scanOptions(
+        {L"helper.exe", L"--input", L"a", L"/posix/path"}, 1, {}, {L"input"});
+    check(slashPositional.ok, "option scan accepts slash-prefixed positional paths");
+    check(slashPositional.positionals.size() == 1
+              && slashPositional.positionals[0] == L"/posix/path",
+          "slash path is preserved as a positional argument");
 }
 
 inline void testTextHelpers()

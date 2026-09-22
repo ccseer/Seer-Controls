@@ -359,12 +359,17 @@ void testConsoleLaunchContract(const std::wstring &probeChild,
               << (membership.parentKillsOnClose ? 1 : 0)
               << ", terminal child kills on close: "
               << (childKillsOnClose ? 1 : 0) << '\n';
-    // The data-processing job this helper creates always sets
-    // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. A terminal child that merely inherited
-    // the launcher's own job state proves no such job was added.
-    check(childKillsOnClose
-              == (membership.inJob && membership.parentKillsOnClose),
-          "the terminal launcher creates no kill-on-close containment job");
+    // This helper creates no containment job of its own. A terminal child is
+    // therefore either outside any job (breakaway succeeded) or in the
+    // launcher's own job with exactly the launcher's limits; both outcomes are
+    // legitimate, and anything else would mean containment the code never
+    // added.
+    const bool inheritedParentJob = membership.inJob
+                                    && childKillsOnClose
+                                           == membership.parentKillsOnClose;
+    check(!childKillsOnClose || inheritedParentJob,
+          "the terminal child either breaks away or inherits the launcher's "
+          "own job state: the launcher adds no containment job of its own");
 
     terminalhere::LaunchPlan dying = plan;
     dying.arguments = {directory + L"\\dying-report.txt", L"echo"};

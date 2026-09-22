@@ -30,8 +30,10 @@ elevated automatically.
 
 ## What the report shows
 
-The dialog shows plain text: the file, a line per holder, and the standing
-limitation note. For every user the Restart Manager reports:
+The dialog shows plain text: the file, up to three holders in full (to keep the
+modal message box within standard display bounds, with an omitted count note when
+more holders exist), and the standing limitation note. For every user the Restart
+Manager reports:
 
 - the kind of holder (application, service, Windows Explorer, console, or
   critical system process) and its registered name,

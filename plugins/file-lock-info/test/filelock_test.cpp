@@ -127,6 +127,20 @@ void testReportFormatting()
     const auto truncated = filelock::formatReportText(reportWith(3, true));
     check(truncated.find(L"Only the first") != std::wstring::npos,
           "a truncated list says so");
+    check(truncated.find(L"... and ") == std::wstring::npos,
+          "exactly 3 users does not show an omitted note");
+
+    const auto five = filelock::formatReportText(reportWith(5));
+    check(five.find(L"5 user(s) reported by Restart Manager") != std::wstring::npos,
+          "the total user count is reported");
+    check(five.find(L"app2") != std::wstring::npos,
+          "the third user is rendered");
+    check(five.find(L"app3") == std::wstring::npos
+              && five.find(L"app4") == std::wstring::npos,
+          "users beyond the limit are not rendered in full");
+    check(five.find(L"... and 2 more user(s) holding this file (3 of 5 shown).")
+              != std::wstring::npos,
+          "an omitted count note is present when users exceed the display limit");
 
     auto elevated = reportWith(0);
     elevated.elevated = true;

@@ -104,7 +104,7 @@ inline OptionScan scanOptions(const std::vector<std::wstring> &arguments,
     OptionScan scan;
     for (size_t index = firstIndex; index < arguments.size(); ++index) {
         const std::wstring &raw = arguments[index];
-        if (raw.size() < 2 || (raw[0] != L'/' && raw[0] != L'-')) {
+        if (raw.size() < 2 || raw[0] != L'-') {
             scan.positionals.push_back(raw);
             continue;
         }

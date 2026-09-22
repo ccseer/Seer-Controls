@@ -25,8 +25,12 @@ std::wstring stampOf(const unsigned long long fileTime)
     FILETIME utc{};
     utc.dwLowDateTime  = static_cast<DWORD>(fileTime & 0xFFFFFFFFULL);
     utc.dwHighDateTime = static_cast<DWORD>(fileTime >> 32);
+    FILETIME localFileTime{};
+    if (!FileTimeToLocalFileTime(&utc, &localFileTime)) {
+        return std::wstring();
+    }
     SYSTEMTIME local{};
-    if (!FileTimeToSystemTime(&utc, &local)) {
+    if (!FileTimeToSystemTime(&localFileTime, &local)) {
         return std::wstring();
     }
     wchar_t text[64]{};
@@ -325,7 +329,9 @@ std::wstring formatReportText(const LockReport &report)
     else {
         text += std::to_wstring(static_cast<long long>(report.users.size()))
                 + L" user(s) reported by Restart Manager:\r\n\r\n";
-        for (size_t index = 0; index < report.users.size(); ++index) {
+        const size_t displayCount
+            = (std::min)(report.users.size(), kMaxDisplayUsers);
+        for (size_t index = 0; index < displayCount; ++index) {
             const auto &user = report.users[index];
             text += std::to_wstring(static_cast<long long>(index + 1)) + L". "
                     + user.applicationType + L"\r\n";
@@ -347,6 +353,17 @@ std::wstring formatReportText(const LockReport &report)
                 text += L"   Started: " + stampOf(user.startTime) + L"\r\n";
             }
             text += L"\r\n";
+        }
+
+        if (report.users.size() > displayCount) {
+            const size_t remaining = report.users.size() - displayCount;
+            text += L"... and "
+                    + std::to_wstring(static_cast<long long>(remaining))
+                    + L" more user(s) holding this file ("
+                    + std::to_wstring(static_cast<long long>(displayCount))
+                    + L" of "
+                    + std::to_wstring(static_cast<long long>(report.users.size()))
+                    + L" shown).\r\n\r\n";
         }
     }
 
