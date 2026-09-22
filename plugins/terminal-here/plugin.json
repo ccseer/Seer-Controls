@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "io.1218.seer.terminal-here",
+  "name": "Terminal Here",
+  "description": "Opens a terminal window in the current folder.",
+  "version": "1.0.0",
+  "appMinVersion": "4.5.10",
+  "backend": "process",
+  "capabilities": ["control"],
+  "extensions": ["${type_folder}"],
+  "command": "terminal_here.exe",
+  "arguments": ["--input", "${input_file}"],
+  "timeout_ms": 150000,
+  "success_exit_codes": [0]
+}

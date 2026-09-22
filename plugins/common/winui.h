@@ -3,9 +3,11 @@
 #include <windows.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "shelluiworker.h"
 #include "wincmd.h"
 #include "winpath.h"
 #include "winproc.h"
@@ -25,10 +27,18 @@
 //     never bounds how long the user may interact with it.
 //
 // This is the same contract ShellUiWorker implements for the controls that
-// shipped before it. ShellUiWorker is left untouched because its worker layout
-// is a fixed `--input <path>` triple; the mode flags below accept arbitrary
-// option lists.
+// shipped before it. Both share the launcher-owned reason channel: a worker is
+// spawned detached with no handle inheritance, so a refusal it raises reaches
+// the host only when the launcher re-emits it on its own stderr. ShellUiWorker
+// keeps its own entry point because its worker layout is a fixed
+// `--input <path>` triple; the mode flags below accept arbitrary option lists.
 namespace UiHandoff {
+
+// How a helper explains a refusal. The showing half receives one, and packages
+// that run the same code in the launcher and in the worker declare their APIs
+// in terms of this alias rather than spelling out their own identical
+// std::function type.
+using ErrorReport = ShellUiWorker::ErrorReport;
 
 inline constexpr const wchar_t *kReadyFlag = L"--ui-ready-event";
 // The mode marker is value-less; the event name travels in its own option so the
@@ -538,16 +548,23 @@ struct HandoffOptions {
 // Launcher mode of the two-process UI handoff.
 //
 // validate() runs in both processes so an invalid request fails before any
-// window exists. show() runs only in the worker and must call its `ready`
-// callback once the intended UI is on screen; it then keeps running for as long
-// as the UI lives.
+// window exists, and it returns the refusal as text instead of reporting it:
+// the half that refuses may be the detached worker, whose stderr the host can
+// never read, so the handoff picks the channel that reaches it (the launcher's
+// own stderr, or the launcher's reason buffer). show() runs only in the worker,
+// must call its `ready` callback once the intended UI is on screen, and
+// receives an ErrorReport for anything it fails at afterwards; it then keeps
+// running for as long as the UI lives.
 inline int run(const std::vector<std::wstring> &arguments,
-               const std::function<bool(const std::vector<std::wstring> &)> &validate,
+               const std::function<std::optional<std::wstring>(
+                   const std::vector<std::wstring> &)> &validate,
                const std::function<int(const std::vector<std::wstring> &,
-                                       const std::function<void()> &)> &show,
+                                       const std::function<void()> &,
+                                       const ErrorReport &)> &show,
                const HandoffOptions &options = {})
 {
     if (arguments.empty()) {
+        reportFailure(L"no command line was provided.");
         return 2;
     }
 
@@ -556,21 +573,33 @@ inline int run(const std::vector<std::wstring> &arguments,
         const std::wstring eventName = arguments.back();
         std::vector<std::wstring> worker(arguments.begin(),
                                          arguments.end() - 2);
+        // This process is detached with no inherited handles, so nothing it
+        // writes to stderr is readable by the host. The named channel the
+        // launcher owns is the only way a refusal raised here can be explained.
+        const auto report = [&](const std::wstring &message) {
+            ShellUiWorker::publishReason(eventName, message);
+            WinText::writeStandardError(message);
+        };
         HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, eventName.c_str());
         if (!ready) {
+            report(L"the UI worker could not open the handoff event.");
             return 1;
         }
-        if (!validate(worker)) {
+        if (const auto refusal = validate(worker)) {
+            report(*refusal);
             CloseHandle(ready);
             return 2;
         }
-        const int result
-            = show(worker, [&] { SetEvent(ready); });
+        const int result = show(worker, [&] { SetEvent(ready); }, report);
         CloseHandle(ready);
         return result;
     }
 
-    if (!validate(arguments)) {
+    // The launcher runs where the host reads stderr directly, and this happens
+    // before the reason channel exists, so its own channel is the only one
+    // available here.
+    if (const auto refusal = validate(arguments)) {
+        WinText::writeStandardError(*refusal);
         return 2;
     }
 
@@ -580,6 +609,13 @@ inline int run(const std::vector<std::wstring> &arguments,
     }
     HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, eventName.c_str());
     if (!ready) {
+        return 1;
+    }
+    // Created before the worker starts and held for the launcher's whole
+    // lifetime, so the worker's write has somewhere to land.
+    const auto reasonChannel = ShellUiWorker::createReasonChannel(eventName);
+    if (!reasonChannel) {
+        CloseHandle(ready);
         return 1;
     }
 
@@ -598,6 +634,12 @@ inline int run(const std::vector<std::wstring> &arguments,
     if (!WinProc::createChild(WinProc::modulePath(), childArguments, launch,
                               nullptr, &child, &error)) {
         CloseHandle(ready);
+        // The failure text is already built by createChild; dropping it here
+        // would leave the host with an exit code and no explanation at all.
+        reportFailure(error.empty()
+                          ? std::wstring(L"the UI worker process could not be "
+                                         L"started.")
+                          : error);
         return 1;
     }
     AllowSetForegroundWindow(child.pid);
@@ -605,8 +647,21 @@ inline int run(const std::vector<std::wstring> &arguments,
         TerminateProcess(child.process, 1);
         child.close();
         CloseHandle(ready);
+        reportFailure(error.empty()
+                          ? std::wstring(L"the UI worker process could not be "
+                                         L"started.")
+                          : error);
         return 1;
     }
+
+    // Re-emits whatever the worker published before it died; without this the
+    // host would see an exit code with no reason at all.
+    const auto reportPublishedReason = [&] {
+        const auto reason = ShellUiWorker::readReason(reasonChannel);
+        if (!reason.empty()) {
+            reportFailure(reason);
+        }
+    };
 
     const ULONGLONG deadline = GetTickCount64() + options.readyTimeoutMs;
     int result               = 1;
@@ -623,18 +678,28 @@ inline int run(const std::vector<std::wstring> &arguments,
             // An exit before readiness is a failure even when it is exit 0:
             // the intended UI never appeared.
             result = code == 0 ? 1 : static_cast<int>(code);
+            reportPublishedReason();
             break;
         }
         if (GetTickCount64() >= deadline) {
-            // The readiness event has not fired, but if the worker already owns a
-            // visible window the UI is genuinely on screen: report success and
-            // let it live. Only a worker with no window at all is a failure.
+            // The readiness event has not fired, but if the worker already owns
+            // a visible window the UI is genuinely on screen: report success
+            // and let it live. Only a worker with no window at all is a
+            // failure.
             if (ownsVisibleWindow(child.pid)) {
                 result = 0;
                 break;
             }
             TerminateProcess(child.process, 1);
             WaitForSingleObject(child.process, 1000);
+            // The worker may have published a reason before it was terminated;
+            // if it did not, the timeout itself is the only explanation left.
+            const auto reason = ShellUiWorker::readReason(reasonChannel);
+            WinText::writeStandardError(
+                reason.empty()
+                    ? std::wstring(L"the UI worker did not become ready "
+                                   L"before the handoff timed out.")
+                    : reason);
             result = 1;
             break;
         }

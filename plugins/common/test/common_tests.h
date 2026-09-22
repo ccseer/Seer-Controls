@@ -3,10 +3,12 @@
 #include <windows.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "shelluiworker.h"
 #include "winclip.h"
 #include "wincmd.h"
 #include "winpath.h"
@@ -15,6 +17,7 @@
 #include "winui.h"
 
 #include "fileprobe.h"
+#include "stderrharness.h"
 #include "testharness.h"
 
 // Shared assertions for the native Control packages.
@@ -509,15 +512,65 @@ inline void testUiHandoffRejectsInvalidArguments(
     const std::vector<std::wstring> &arguments)
 {
     int showCalls = 0;
+    // Captured so the refusal the launcher writes for the host stays out of
+    // ctest output, and so the contract is asserted rather than hoped for: a
+    // refusal that only changes the exit code is exactly the silent failure
+    // the reason channel exists to prevent.
+    StderrHarness::Capture capture;
     const int result = UiHandoff::run(
-        arguments, [](const std::vector<std::wstring> &) { return false; },
+        arguments,
+        [](const std::vector<std::wstring> &) {
+            return std::optional<std::wstring>(
+                L"the request was refused by validation");
+        },
         [&](const std::vector<std::wstring> &,
-            const std::function<void()> &) {
+            const std::function<void()> &, const UiHandoff::ErrorReport &) {
             ++showCalls;
             return 0;
         });
+    const auto written = capture.drain();
     check(result == 2, "the handoff reports a usage failure for bad input");
     check(showCalls == 0, "no UI is created for invalid input");
+    check(written.find("the request was refused by validation")
+              != std::string::npos,
+          "a launcher-side refusal explains itself on the stderr the host "
+          "reads");
+
+    // The worker half refuses through the launcher's reason channel, because a
+    // detached worker has no stderr the host could read. The launcher's half of
+    // the handoff is stood up here first, since the worker publishes nowhere
+    // else; the stderr copy the worker also writes is captured for the same
+    // reason as above.
+    {
+        const std::wstring eventName
+            = std::wstring(L"Local\\SeerControlCommonTest-refusal-")
+              + std::to_wstring(GetCurrentProcessId());
+        ShellUiWorker::Handle ready(
+            CreateEventW(nullptr, TRUE, FALSE, eventName.c_str()));
+        const auto channel = ShellUiWorker::createReasonChannel(eventName);
+        check(static_cast<bool>(ready) && static_cast<bool>(channel),
+              "the worker half of the handoff can be stood up");
+
+        StderrHarness::Capture workerCapture;
+        const int workerResult = UiHandoff::run(
+            {L"helper.exe", UiHandoff::kReadyFlag, eventName},
+            [](const std::vector<std::wstring> &) {
+                return std::optional<std::wstring>(
+                    L"the worker refused the request");
+            },
+            [&](const std::vector<std::wstring> &,
+                const std::function<void()> &, const UiHandoff::ErrorReport &) {
+                ++showCalls;
+                return 0;
+            });
+        workerCapture.drain();
+        check(workerResult == 2,
+              "a worker-side refusal keeps the usage exit code");
+        check(ShellUiWorker::readReason(channel)
+                  == L"the worker refused the request",
+              "a worker-side refusal is published on the launcher's channel");
+    }
+    check(showCalls == 0, "no UI is created for a refused request");
 }
 
 inline void testOptionScanner()
