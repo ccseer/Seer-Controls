@@ -2,6 +2,10 @@
 
 #include <shlobj.h>
 
+#include <algorithm>
+
+#include "wintext.h"
+
 ParsedInput parseArguments(const std::vector<std::wstring> &arguments,
                            std::wstring *error)
 {
@@ -15,14 +19,9 @@ ParsedInput parseArguments(const std::vector<std::wstring> &arguments,
         return fail(L"expected exactly --input <path>");
 
     auto path = arguments[2];
+    std::replace(path.begin(), path.end(), L'/', L'\\');
     if (path.empty())
         return fail(L"input path is empty");
-
-    for (auto &ch : path) {
-        if (ch == L'/') {
-            ch = L'\\';
-        }
-    }
 
     const auto attributes = GetFileAttributesW(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES
@@ -42,18 +41,29 @@ HRESULT invokeOpenWith(const std::wstring &path, HWND owner)
 }
 
 int run(const std::vector<std::wstring> &arguments,
-        const OpenWithInvoker &invoker)
+        const OpenWithInvoker &invoker, const ErrorSink &report)
 {
     std::wstring error;
     const auto parsed = parseArguments(arguments, &error);
-    if (!parsed.valid)
-        return 2;
+    if (!parsed.valid) {
+        report(L"Open With could not start: " + error);
+        return kArgumentErrorExitCode;
+    }
 
     const auto result = invoker(parsed.path, nullptr);
-    return SUCCEEDED(result) ? 0 : 1;
+    if (FAILED(result)) {
+        report(L"Open With could not be shown for the selected file.");
+        return kShellFailureExitCode;
+    }
+    return 0;
 }
 
 int run(const std::vector<std::wstring> &arguments)
 {
-    return run(arguments, invokeOpenWith);
+    // Only this overload is reached from wWinMain, so it owns the one sink that
+    // writes to the process's real stderr.
+    return run(arguments, invokeOpenWith,
+               [](const std::wstring &message) {
+                   WinText::writeStandardError(message);
+               });
 }

@@ -8,15 +8,26 @@ include(CTest)
 enable_testing()
 
 add_library(openwith_core STATIC src/openwith.cpp)
-target_include_directories(openwith_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(openwith_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common
+)
 target_link_libraries(openwith_core PUBLIC shell32)
 
 add_executable(shellopenwith WIN32 src/main.cpp)
 target_link_libraries(shellopenwith PRIVATE openwith_core shell32)
 
 add_executable(shellopenwith_test test/openwith_test.cpp)
+target_include_directories(shellopenwith_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
+)
 target_link_libraries(shellopenwith_test PRIVATE openwith_core)
-add_test(NAME shellopenwith_test COMMAND shellopenwith_test)
+add_dependencies(shellopenwith_test shellopenwith)
+# The process-level check needs the real helper: stderr is the host's only
+# failure channel, so it can only be observed from a redirected child pipe.
+add_test(NAME shellopenwith_test
+    COMMAND shellopenwith_test $<TARGET_FILE:shellopenwith>
+)
 
 set(OPENWITH_MANIFEST_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/manifest-stage)
 add_custom_command(
@@ -43,6 +54,9 @@ add_custom_target(openwith_manifest_stage
 
 add_executable(openwith_manifest_test test/manifest_test.cpp)
 add_dependencies(openwith_manifest_test openwith_manifest_stage)
+target_include_directories(openwith_manifest_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
+)
 add_test(NAME openwith_manifest_test COMMAND openwith_manifest_test ${OPENWITH_MANIFEST_STAGING_DIR})
 
 install(TARGETS shellopenwith RUNTIME DESTINATION .)
