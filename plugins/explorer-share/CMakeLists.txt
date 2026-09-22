@@ -32,6 +32,9 @@ target_link_libraries(seer_share PRIVATE share_core)
 add_executable(share_test
     test/share_test.cpp
 )
+target_include_directories(share_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
+)
 target_link_libraries(share_test PRIVATE share_core)
 add_test(NAME share_test COMMAND share_test)
 
@@ -60,6 +63,11 @@ add_custom_target(share_manifest_stage
 
 add_executable(share_manifest_test test/manifest_test.cpp)
 add_dependencies(share_manifest_test share_manifest_stage)
+target_include_directories(share_manifest_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
+)
 add_test(NAME share_manifest_test COMMAND share_manifest_test ${SHARE_MANIFEST_STAGING_DIR})
 
 install(TARGETS seer_share RUNTIME DESTINATION .)

@@ -15,17 +15,21 @@ The package interface in `plugin.json` is fixed:
 Build and test the standalone package with:
 
 ```powershell
-cmake -S plugins/explorer-properties -B plugins/explorer-properties/build -G "Visual Studio 17 2022" -A x64
-cmake --build plugins/explorer-properties/build --config Release
-ctest --test-dir plugins/explorer-properties/build -C Release --output-on-failure
+cd plugins/explorer-properties
+cmake --preset default            # Ninja, Release; binaryDir outside the working tree (machine-local CMakeUserPresets.json)
+cmake --build --preset default
+ctest --preset default
 ```
+
+Without the machine-local preset file, configure with an explicit
+out-of-repo `-B` directory instead.
 
 Install the distributable files into one package root, then create the release
 archive from that root only:
 
 ```powershell
-cmake --install plugins/explorer-properties/build --config Release --prefix plugins/explorer-properties/dist
-Compress-Archive -Path plugins/explorer-properties/dist/* -DestinationPath plugins/explorer-properties/explorer-properties-1.0.0.zip
+cmake --install "<your-build-dir>" --prefix dist
+Compress-Archive -Path dist/* -DestinationPath explorer-properties-1.1.0.zip
 ```
 
 The install step validates that the manifest and helper are present under the
@@ -48,6 +52,13 @@ the following acceptance cases in a fresh Seer profile:
 The launcher returns success once the system UI is ready. A separate helper
 process keeps the UI alive until it closes, so Seer's command timeout does not
 limit how long the user can interact with the dialog.
+
+Seer renders the launcher's stderr only, and that helper process is spawned
+detached without handle inheritance, so a refusal it raises cannot be written
+straight to the host. The launcher creates a named reason channel before the
+helper starts; the helper publishes its message there and the launcher re-emits
+it on its own stderr, which is what lets a shell refusal or a dialog that never
+appeared reach the user as text instead of a bare exit code.
 
 Build from this repository with `plugins/common` present; its shared launcher
 header is compiled into the executable and adds no package runtime dependency.

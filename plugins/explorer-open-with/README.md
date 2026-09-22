@@ -32,7 +32,7 @@ Create a distributable package with:
 
 ```powershell
 cmake --install "<your-build-dir>" --prefix dist
-Compress-Archive -Path dist/* -DestinationPath explorer-open-with-1.0.0.zip
+Compress-Archive -Path dist/* -DestinationPath explorer-open-with-1.1.0.zip
 ```
 
 The manifest test stages the CMake-built `shellopenwith.exe` with a

@@ -16,8 +16,22 @@ target_include_directories(shellverb_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../
 target_link_libraries(shellverb_properties PRIVATE shellverb_core Shell32.lib)
 
 add_executable(shellverb_properties_test test/main_test.cpp)
+target_include_directories(shellverb_properties_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
+)
 target_link_libraries(shellverb_properties_test PRIVATE shellverb_core Shell32.lib)
 add_test(NAME shellverb_properties_test COMMAND shellverb_properties_test)
+
+# The reason channel the launcher uses to forward a worker-side refusal to the
+# host is shared header-only code, so it is exercised here rather than in a
+# package-specific test.
+add_executable(shelluiworker_test ../common/test/shelluiworker_test.cpp)
+target_include_directories(shelluiworker_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
+)
+target_link_libraries(shelluiworker_test PRIVATE Shell32.lib)
+add_test(NAME shelluiworker_test COMMAND shelluiworker_test)
 
 set(SHELLVERB_PACKAGE_STAGING_DIR ${CMAKE_CURRENT_BINARY_DIR}/package-stage)
 add_custom_command(
@@ -42,6 +56,10 @@ add_custom_target(shellverb_manifest_stage
 
 add_executable(shellverb_manifest_test test/manifest_test.cpp)
 add_dependencies(shellverb_manifest_test shellverb_manifest_stage)
+target_include_directories(shellverb_manifest_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/test
+)
 add_test(NAME shellverb_manifest_test
     COMMAND shellverb_manifest_test ${SHELLVERB_PACKAGE_STAGING_DIR})
 add_custom_target(shellverb_package

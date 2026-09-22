@@ -1,6 +1,7 @@
 #include "share.h"
 #include "sharefile.h"
 #include "shelluiworker.h"
+#include "wintext.h"
 
 #include <ShObjIdl_core.h>
 #include <roapi.h>
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <optional>
 #include <vector>
@@ -50,9 +52,11 @@ bool isUnsupportedShareError(const HRESULT hr)
 ParsedInput parseArguments(const std::vector<std::wstring> &arguments,
                            std::wstring *error)
 {
-    auto fail = [&](const wchar_t *message) {
+    // Worded for the user, because the host renders this text verbatim for a
+    // refused action; the caller only picks the channel that carries it.
+    auto fail = [error](const wchar_t *message) {
         if (error) {
-            *error = message;
+            *error = std::wstring(L"Sharing could not start: ") + message;
         }
         return ParsedInput{};
     };
@@ -87,17 +91,53 @@ ParsedInput parseArguments(const std::vector<std::wstring> &arguments,
     return ParsedInput{true, *normalizedPath};
 }
 
-int run(const std::vector<std::wstring> &arguments, ISharePlatform &platform,
-        std::function<void()> onReady)
+std::wstring describeFailure(const HRESULT result)
 {
+    if (result == HRESULT_FROM_WIN32(ERROR_TIMEOUT)) {
+        return L"Sharing did not open: the share pane never asked for this file. "
+               L"It may be unavailable on this system or blocked for this "
+               L"account.";
+    }
+    if (isUnsupportedShareError(result)) {
+        return L"Sharing is not available on this system: the Windows share "
+               L"interface is missing or disabled.";
+    }
+    const auto code = static_cast<unsigned long>(result);
+    return L"Sharing could not be opened (error 0x"
+           + [code] {
+                 wchar_t text[16]{};
+                 swprintf_s(text, L"%08lX", code);
+                 return std::wstring(text);
+             }()
+           + L").";
+}
+
+int run(const std::vector<std::wstring> &arguments, ISharePlatform &platform,
+        std::function<void()> onReady, const ErrorReport &report)
+{
+    // The showing half runs where nothing host-readable is written to stderr, so
+    // a failure has to be reported or the host renders an unexplained code.
+    const auto announce = [&](const std::wstring &message) {
+        if (report) {
+            report(message);
+        } else {
+            WinText::writeStandardError(message);
+        }
+    };
+
     std::wstring error;
     const auto parsed = parseArguments(arguments, &error);
     if (!parsed.valid) {
+        // announce picks the channel: the launcher's report when this runs in
+        // the detached worker, and stderr for the entry point that has none.
+        // Either way the refusal is explained instead of only coded.
+        announce(error);
         return 2;
     }
 
     const HRESULT hr = platform.show(parsed.path, std::move(onReady));
     if (FAILED(hr)) {
+        announce(describeFailure(hr));
         if (isUnsupportedShareError(hr)) {
             return 3;
         }
@@ -243,8 +283,11 @@ HRESULT WindowsSharePlatform::show(const std::wstring &path,
         return hr;
     }
 
-    const auto startTime    = std::chrono::steady_clock::now();
-    constexpr auto kTimeout = std::chrono::seconds(30);
+    const auto startTime = std::chrono::steady_clock::now();
+    // Named and shared, because this wait happens before readiness is signalled
+    // and therefore has to be covered by the manifest timeout; the assertion
+    // that checks that budget reads the same constant.
+    const auto kTimeout  = std::chrono::milliseconds(kSharePayloadWaitMs);
 
     while (!dataPopulated) {
         if (std::chrono::steady_clock::now() - startTime > kTimeout) {

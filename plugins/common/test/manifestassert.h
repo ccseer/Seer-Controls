@@ -456,6 +456,13 @@ inline bool load(const std::filesystem::path &packageRoot,
         root / commandName, code);
     check(!code && std::filesystem::is_regular_file(package->commandPath),
           std::string(label) + ": staged command exists as a regular file");
+    // An empty file is not a usable helper and would fail only at action time,
+    // so the contract is checked here for every Control package at once.
+    std::error_code sizeCode;
+    const auto commandSize
+        = std::filesystem::file_size(package->commandPath, sizeCode);
+    check(!sizeCode && commandSize > 0,
+          std::string(label) + ": staged command is non-empty");
     check(isWithin(root, package->commandPath),
           std::string(label) + ": staged command stays inside the package root");
     return true;

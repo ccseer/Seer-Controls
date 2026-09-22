@@ -3,13 +3,13 @@
   "id": "io.1218.seer.explorer-share",
   "name": "Share",
   "description": "Opens the Windows system Share UI for the current file.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "appMinVersion": "4.5.10",
   "backend": "process",
   "capabilities": ["control"],
   "extensions": ["${type_file}"],
   "command": "seer_share.exe",
   "arguments": ["--input", "${input_file}"],
-  "timeout_ms": 30000,
+  "timeout_ms": 50000,
   "success_exit_codes": [0]
 }

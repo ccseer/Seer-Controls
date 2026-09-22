@@ -26,6 +26,8 @@ int main(int argc, char *argv[])
     check(package.name == "Open With", "manifest name is Open With");
     check(package.command == "shellopenwith.exe",
           "command is shellopenwith.exe");
+    check(package.version == "1.1.0",
+          "the release version matches the packaged archive name");
     check(package.appMinVersion == "4.5.10",
           "the declared minimum host version is unchanged");
     check(isExactStringArray(member(package.root, "extensions"),

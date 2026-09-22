@@ -3,7 +3,7 @@
   "id": "io.1218.seer.explorer-open-with",
   "name": "Open With",
   "description": "Opens the Windows Open With dialog for the current file.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "appMinVersion": "4.5.10",
   "backend": "process",
   "capabilities": ["control"],
