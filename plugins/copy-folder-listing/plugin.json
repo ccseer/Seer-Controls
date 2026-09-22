@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "io.1218.seer.copy-folder-listing",
+  "name": "Copy Folder Listing",
+  "description": "Copies the first-level contents of the current folder to the clipboard.",
+  "version": "1.0.0",
+  "appMinVersion": "4.5.11",
+  "backend": "process",
+  "capabilities": ["control"],
+  "extensions": ["${type_folder}"],
+  "command": "copy_folder_listing.exe",
+  "arguments": ["--input", "${input_file}"],
+  "close_after_success": false,
+  "timeout_ms": 120000,
+  "success_exit_codes": [0]
+}

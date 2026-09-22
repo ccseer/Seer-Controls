@@ -130,3 +130,7 @@ x86/
 # Built Visual Studio Code Extensions
 *.vsix
 *.zip
+
+### CMake user presets
+# Machine-local build locations; never commit absolute paths
+CMakeUserPresets.json
