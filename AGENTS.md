@@ -21,7 +21,9 @@ Agent boundary:
 ## 2. Repository Layout
 
 - `plugins/<name>/` — one directory per deployable package. Each is a
-  standalone CMake project configured and tested on its own.
+  standalone CMake project configured and tested on its own. It owns
+  `PACKAGE_README.md`, the user-facing readme that is staged and installed as
+  `README.md` and therefore ships inside the ZIP.
 - `plugins/common/` — header-only shared build code (`controlentry.h`,
   `shelluiworker.h`, `wincmd.h`, `winpath.h`, `winproc.h`,
   `winclip.h`, `winexit.h`, `wintext.h`) plus `test/` (check harness,
@@ -96,7 +98,7 @@ Additional constraints:
   helper executable and the shipped package stays minimal (no extra DLLs, no
   additional runtime files). Avoid dependencies that force dynamically linked
   DLLs or external downloads; if no such library exists and a dynamic or
-  external dependency is unavoidable, document why in the package README.
+  external dependency is unavoidable, document why in the package's `README.md`.
 - Sources are UTF-8 without a byte order mark; MSVC builds pass `/utf-8`.
 - Treat warnings as errors (`/W4 /WX`) in package targets.
 
@@ -114,7 +116,8 @@ archive is downloaded and stored by end users, so size beats packing time:
   zstd inside the ZIP even when the packer advertises a better ratio: the host
   reads archives with 7-Zip, but users and other tools may not.
 - Pack the staged layout as it is — one consistent package root holding
-  `plugin.json` and the helper. Never mix top-level and nested files; the host
+  `plugin.json`, the helper and `README.md` (staged from
+  `PACKAGE_README.md`). Never mix top-level and nested files; the host
   rejects an archive with an ambiguous package root.
 - Run the packer from inside the stage directory and give the archive an
   absolute path, e.g.
@@ -170,6 +173,19 @@ ctest --preset default
   clipboard or a system dialog.
 - Completion is reported through the helper's exit code against the manifest's
   `success_exit_codes`; standard output is never rendered by the host.
-- Each package README documents every option, the dependency policy, what a
-  successful invocation means, what happens on cancellation, and a manual
-  acceptance checklist. Update it whenever a package's behavior changes.
+- Each package's developer `README.md` documents every option, the dependency
+  policy, what a successful invocation means, what happens on cancellation, and
+  a manual acceptance checklist. Update it whenever a package's behavior
+  changes.
+- **Shipped package README.** Every package owns a `PACKAGE_README.md`: one
+  short paragraph describing what the control does, followed by an
+  "Options & Arguments" table covering every option the helper accepts (option,
+  accepted values, default, purpose). `seer_control_package_staging` in
+  `plugins/common/PackageStaging.cmake` stages it and installs it as
+  `README.md` next to `plugin.json`, so it is packed into the distributable
+  ZIP, and each `*_manifest_test` asserts the staged copy exists and is
+  non-empty. Update `PACKAGE_README.md` in the same change whenever the CLI
+  surface moves — an option added, removed, renamed, re-defaulted, or given a
+  different set of accepted values — and whenever the user-visible behavior
+  changes. The developer `README.md` is not shipped and never substitutes for
+  it.
