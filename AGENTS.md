@@ -40,21 +40,16 @@ When a plugin helper needs a scratch location — temporary output, intermediate
 files, extracted data, or any other writable working area — it MUST resolve
 that location in this order, stopping at the first one that is usable:
 
-1. **A location the Seer host assigns for this request, when it assigns one.**
-   Canonical v1 passes the per-request directory to the helper through the
-   `${output_dir}` / `${output_file}` placeholders (host side: the
-   `ctrl_<uuid>` directory under the host's auto-delete temp root). A host
-   assignment always wins, because it is the location the host manages and
-   cleans.
-   **Constraint:** the host deletes that directory (and the output files it
-   tracks) as soon as the operation finishes or is cancelled. Use it only for
-   files whose life ends with the request. Anything the user is meant to keep
-   — retained results, reports, backups — belongs to step 2 or 3, never here.
-2. **The plugin's own executable directory.** Otherwise use the directory the
-   running helper lives in (the package folder), so package-scoped work stays
+A Canonical v1 control helper is **not** given a host-assigned output
+directory. The host rejects `${output_dir}` and `${output_file}` in a control
+manifest (`validateArgumentTokens`, host side), so there is no per-request
+directory to prefer and the helper owns its scratch location from the start.
+
+1. **The plugin's own executable directory.** Use the directory the running
+   helper lives in (the package folder), so package-scoped work stays
    package-scoped, survives between invocations, and a portable install keeps
    all of its state local to the package.
-3. **The system temporary directory.** Only when the plugin's own directory is
+2. **The system temporary directory.** Only when the plugin's own directory is
    not writable or cannot be created (the usual case for a `Program Files` or
    read-only-media install), fall back to `GetTempPathW()`, namespaced as
    `<temp>\SeerControlPlugins\<packageName>`.
@@ -64,10 +59,11 @@ Additional constraints:
 - Never hardcode any of these locations. Resolve them at runtime and probe
   writability before use: a directory can exist and still refuse writes, so
   existence is not the test. `WinPath::isWritableDirectory` creates a probe
-  file and deletes it; `WinPath::resolveOwnedRoot` implements steps 2 and 3
-  and reports which one it used and why the preferred one was rejected.
-- If neither step 2 nor step 3 is writable, fail with a message that names
-  both locations and the reason each was rejected. Never silently continue
+  file and deletes it; `WinPath::resolveOwnedRoot` implements both steps and
+  reports which one it used and why the preferred one was rejected.
+- If neither step is writable, fail with a message that names both locations
+  and the reason each was rejected. Never silently continue with no working
+  directory.
   with no working directory.
 - **Same-volume exception:** work that must be moved into the target's
   location with an atomic rename may use a scratch directory in the target's

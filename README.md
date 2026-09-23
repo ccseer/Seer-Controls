@@ -72,3 +72,12 @@ directory instead. `explorer-share` additionally needs
 
 Sources are UTF-8 without a byte order mark, so the MSVC builds pass `/utf-8`
 rather than letting the compiler guess the active code page.
+
+## Resources
+
+- [Control plugin development guide](./plugin_development_guide.md)
+- [Official plugin development documentation](https://1218.io/docs/seer/create-plugin#controls)
+- [Official control plugin downloads](https://1218.io/docs/seer/download#controls)
+- [Seer Plugins (Viewers)](https://github.com/ccseer/Seer-plugins)
+- [Seer Properties](https://github.com/ccseer/Seer-Properties)
+
