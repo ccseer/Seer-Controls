@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "io.1218.seer.ocr",
+  "name": "OCR Text",
+  "description": "Extract text from the current view with on-device OCR.",
+  "version": "1.0.0",
+  "appMinVersion": "4.8.0",
+  "backend": "process",
+  "capabilities": ["control"],
+  "extensions": ["${type_pdf}", "${type_image}"],
+  "command": "SeerOcrWorker.exe",
+  "arguments": [
+    "${screenshot}",
+    "${seerviewer_exe}",
+    "${input_file}",
+    "--ep=auto",
+    "--cls=1",
+    "--wait-timeout=300000"
+  ],
+  "timeout_ms": 120000,
+  "success_exit_codes": [0],
+  "close_after_success": false
+}

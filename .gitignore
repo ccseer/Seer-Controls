@@ -134,3 +134,7 @@ x86/
 ### CMake user presets
 # Machine-local build locations; never commit absolute paths
 CMakeUserPresets.json
+
+### OCR plugin: large binary weights and archives are distributed outside git
+plugins/ocr/models/*.onnx
+plugins/ocr/models/*.tar
