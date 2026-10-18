@@ -49,9 +49,13 @@ the following acceptance cases in a fresh Seer profile:
 - Uninstalling the package removes the control.
 - Reinstalling the package restores the control.
 
-The launcher returns success once the system UI is ready. A separate helper
-process keeps the UI alive until it closes, so Seer's command timeout does not
-limit how long the user can interact with the dialog.
+The launcher returns success when a visible window appears in the process
+returned by the Shell, or when the synchronous Shell call succeeds without
+returning a process handle and leaves no window in the helper. In the latter
+case the Shell owns the UI and its handoff is the only available confirmation;
+the helper cannot verify that an externally owned dialog actually appeared.
+When the dialog is hosted inside the helper, the worker pumps messages until
+it closes, so Seer's command timeout does not limit user interaction.
 
 Seer renders the launcher's stderr only, and that helper process is spawned
 detached without handle inheritance, so a refusal it raises cannot be written
@@ -59,6 +63,9 @@ straight to the host. The launcher creates a named reason channel before the
 helper starts; the helper publishes its message there and the launcher re-emits
 it on its own stderr, which is what lets a shell refusal or a dialog that never
 appeared reach the user as text instead of a bare exit code.
+
+Also verify that a file type whose Properties handler runs in an existing
+Shell process does not report a three-second failure while its dialog is open.
 
 Build from this repository with `plugins/common` present; its shared launcher
 header is compiled into the executable and adds no package runtime dependency.

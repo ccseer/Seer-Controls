@@ -7,7 +7,35 @@
 #include <windows.h>
 #include <shellapi.h>
 
+namespace {
+
+struct WindowSearch {
+    DWORD processId;
+    bool found = false;
+};
+
+}  // namespace
+
 namespace shellverb {
+
+bool hasVisibleWindowForProcess(const DWORD processId)
+{
+    WindowSearch search{processId};
+    EnumWindows(
+        [](HWND hwnd, LPARAM data) -> BOOL {
+            auto search = reinterpret_cast<WindowSearch *>(data);
+            DWORD owner = 0;
+            GetWindowThreadProcessId(hwnd, &owner);
+            if (owner == search->processId
+                && IsWindowVisible(hwnd)) {
+                search->found = true;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&search));
+    return search.found;
+}
 
 std::optional<ParsedInput> parseArguments(const std::vector<std::wstring> &argv)
 {
@@ -45,7 +73,8 @@ std::optional<ParsedInput> parseArguments(const std::vector<std::wstring> &argv,
 
 int invokeProperties(const std::wstring &inputPath,
                      const std::function<void()> &onReady,
-                     const ErrorReport &report)
+                     const ErrorReport &report,
+                     const ShellExecutor &execute)
 {
     // The host reads the launcher's stderr, so a reason raised here only reaches
     // it when it goes through the report channel. The fallback covers the runs
@@ -68,7 +97,7 @@ int invokeProperties(const std::wstring &inputPath,
     info.lpVerb = L"properties";
     info.lpFile = inputPath.c_str();
     info.nShow  = SW_SHOWNORMAL;
-    if (!ShellExecuteExW(&info)) {
+    if (!execute(&info)) {
         const auto failure = GetLastError();
         announce(L"Properties could not be opened: the shell refused the "
                  L"request ("
@@ -76,20 +105,20 @@ int invokeProperties(const std::wstring &inputPath,
         return kShellFailureExitCode;
     }
 
-    if (info.hProcess)
-        CloseHandle(info.hProcess);
-    const auto hasWindow = [] {
-        bool found = false;
-        EnumWindows([](HWND hwnd, LPARAM data) -> BOOL {
-            DWORD pid = 0;
-            GetWindowThreadProcessId(hwnd, &pid);
-            if (pid == GetCurrentProcessId() && IsWindowVisible(hwnd)) {
-                *reinterpret_cast<bool *>(data) = true;
-                return FALSE;
-            }
-            return TRUE;
-        }, reinterpret_cast<LPARAM>(&found));
-        return found;
+    const auto processHandle = info.hProcess;
+    const DWORD processId = processHandle ? GetProcessId(processHandle)
+                                         : GetCurrentProcessId();
+    if (processHandle)
+        CloseHandle(processHandle);
+    // An existing Shell process may handle the verb without returning a process
+    // handle. NOASYNC completes that handoff; only local windows need our pump.
+    if (!processHandle && !hasVisibleWindowForProcess(processId)) {
+        if (onReady)
+            onReady();
+        return 0;
+    }
+    const auto hasWindow = [processId] {
+        return hasVisibleWindowForProcess(processId);
     };
     // Waits for the dialog this half is responsible for before it can report
     // readiness, which is exactly the pre-readiness work the launcher's shared

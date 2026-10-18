@@ -45,11 +45,95 @@ std::wstring createFile(const std::wstring &directory, const std::wstring &name)
 
 int main()
 {
+    const auto testWindow = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+                                            L"SeerPropertiesTestWindow",
+                                            WS_POPUP, 0, 0, 1, 1, nullptr,
+                                            nullptr, GetModuleHandleW(nullptr),
+                                            nullptr);
+    check(testWindow && !shellverb::hasVisibleWindowForProcess(
+                               GetCurrentProcessId()),
+          "ignores a hidden window");
+    ShowWindow(testWindow, SW_SHOW);
+    check(testWindow && shellverb::hasVisibleWindowForProcess(
+                              GetCurrentProcessId()),
+          "finds a visible window owned by the requested process");
+    check(!shellverb::hasVisibleWindowForProcess(0),
+          "does not match windows belonging to another process");
+    DestroyWindow(testWindow);
     const auto directory   = tempDirectory();
     const auto spacedPath  = createFile(directory, L"regular file.txt");
     const auto unicodePath = createFile(directory, L"Unicode \u6d4b\u8bd5.txt");
     const std::vector<std::wstring> valid{L"shellverb_properties.exe",
                                           L"--input", spacedPath};
+
+    {
+        bool ready = false;
+        std::wstring error;
+        const auto result = shellverb::invokeProperties(
+            spacedPath, [&] { ready = true; },
+            [&](const std::wstring &message) { error = message; },
+            [&](SHELLEXECUTEINFOW *info) -> BOOL {
+                check(std::wstring(info->lpVerb) == L"properties"
+                          && std::wstring(info->lpFile) == spacedPath
+                          && (info->fMask & SEE_MASK_NOASYNC) != 0,
+                      "requests a synchronous Properties handoff");
+                info->hProcess = nullptr;
+                return TRUE;
+            });
+        check(result == 0 && ready && error.empty(),
+              "accepts an existing Shell process handoff without a local window");
+    }
+    {
+        const auto window = CreateWindowExW(
+            WS_EX_TOOLWINDOW, L"STATIC", L"SeerPropertiesLocalTest", WS_POPUP,
+            0, 0, 1, 1, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        ShowWindow(window, SW_SHOW);
+        bool ready = false;
+        const auto result = shellverb::invokeProperties(
+            spacedPath, [&] {
+                ready = true;
+                DestroyWindow(window);
+            }, {}, [](SHELLEXECUTEINFOW *info) -> BOOL {
+                info->hProcess = nullptr;
+                return TRUE;
+            });
+        check(window && result == 0 && ready && !IsWindow(window),
+              "keeps an in-process Properties window alive until readiness");
+    }
+    {
+        const auto window = CreateWindowExW(
+            WS_EX_TOOLWINDOW, L"STATIC", L"SeerPropertiesProcessTest", WS_POPUP,
+            0, 0, 1, 1, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        ShowWindow(window, SW_SHOW);
+        bool ready = false;
+        const auto result = shellverb::invokeProperties(
+            spacedPath, [&] {
+                ready = true;
+                DestroyWindow(window);
+            }, {}, [](SHELLEXECUTEINFOW *info) -> BOOL {
+                info->hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                             FALSE, GetCurrentProcessId());
+                check(info->hProcess != nullptr,
+                      "creates a queryable process handle");
+                return TRUE;
+            });
+        check(window && result == 0 && ready,
+              "reads the returned process identity before closing its handle");
+    }
+    {
+        bool ready = false;
+        std::wstring error;
+        const auto result = shellverb::invokeProperties(
+            spacedPath, [&] { ready = true; },
+            [&](const std::wstring &message) { error = message; },
+            [](SHELLEXECUTEINFOW *) -> BOOL {
+                SetLastError(ERROR_ACCESS_DENIED);
+                return FALSE;
+            });
+        check(result == shellverb::kShellFailureExitCode && !ready
+                  && error.find(L"shell refused") != std::wstring::npos,
+              "reports a refused Shell request without signaling readiness");
+    }
 
     const auto parsed = shellverb::parseArguments(valid);
     check(parsed && parsed->inputPath == spacedPath,

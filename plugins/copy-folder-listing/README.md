@@ -194,3 +194,8 @@ Manual acceptance still required on a real Seer installation:
   appears in the pasted text.
 - Hold the clipboard open from another application and confirm the helper retries
   and then reports a visible failure rather than silently doing nothing.
+
+
+## TODO:
+- options
+  - inlcude abslute path?
