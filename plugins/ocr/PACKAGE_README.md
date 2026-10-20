@@ -1,6 +1,6 @@
 # OCR Text
 
-Extracts text from the current view (PDF or Image) using local on-device OCR powered by PP-OCRv5 and ONNX Runtime DirectML/CPU acceleration. Results are displayed in a SeerViewer window with loading progress -- where they can be selected and copied -- and saved as UTF-8 text and structured JSON.
+Extracts text from the current view (PDF or Image) using local on-device OCR powered by PP-OCRv5 and ONNX Runtime DirectML/CPU acceleration. QR codes and barcodes in the view are decoded locally by the built-in ZXing-C++ engine and reported above the text. Results are displayed in a SeerViewer window with loading progress -- where they can be selected and copied -- and saved as UTF-8 text and structured JSON.
 
 ## Options & Arguments
 
@@ -11,10 +11,18 @@ Extracts text from the current view (PDF or Image) using local on-device OCR pow
 | `<input_file>` | File path or name | (Required pos 3) | Target document identifier used to construct output file names. |
 | `--ep` | `auto`, `cpu`, `dml` | `auto` | Execution provider: `dml` (DirectML GPU), `cpu` (CPU fallback), or `auto` (try DML first, retry on CPU if needed). |
 | `--cls` | `0`, `1` | `1` | Textline orientation classification: `1` to correct 180-degree upside-down lines, `0` to disable. |
+| `--barcode` | `0`, `1` | `1` | Barcode / QR code detection: `1` to scan the screenshot with the built-in ZXing-C++ engine and report the results, `0` to skip the scan (the JSON output then omits `barcodes` entirely). |
 | `--max-side` | Positive integer (px) | `4096` | Upper bound for image dimensions to prevent out-of-memory allocations. |
 | `--wait-timeout` | 5000–600000 (ms) | `120000` | Timeout passed to `SeerViewer.exe --wait-file` before displaying a timeout notice. The shipped manifest passes `300000`. |
 | `--console` | Flag | Off | Attaches to parent console to output verbose diagnostic messages. |
 | `--force-dml-fail` | `init`, `run` | None | Fault injection flag for testing CPU fallback when DirectML initialization or execution fails. |
+
+To change the default behaviour of the control, edit the argument list of the
+installed control in Seer's Settings, e.g. turn barcode reporting off:
+
+```json
+["${screenshot}", "${seerviewer_exe}", "${input_file}", "--barcode=0"]
+```
 
 ## Outputs and Storage
 
@@ -27,6 +35,26 @@ documents with the same name in different folders never share one output set:
 - `<fingerprint> - <filename>.ocr.log`: Diagnostic session log with timings, execution providers, model hash checks, and fallback records.
 
 For example `C:\docs\report.pdf` is written to `%TEMP%\SeerOCR\081f0f17 - report.pdf.ocr.txt`.
+
+When a barcode or QR code is detected, the text result places each symbol in a
+highlighted block on top of the OCR text, so the decoded value is the first
+thing visible in the waiting SeerViewer window:
+
+```text
+==================================================
+[QR Code / Barcode]
+Type: QRCode
+Content: https://github.com/ccseer/Seer
+==================================================
+
+[OCR Text]
+First recognised line...
+```
+
+The JSON result carries the same symbols in a `barcodes` array (`format`,
+`text`, `box` in screenshot pixels, corner order TL/TR/BR/BL). The key is
+present (possibly empty) whenever the scan ran, and is omitted entirely when
+barcode detection is disabled with `--barcode=0`.
 
 ## Requirements
 
@@ -42,5 +70,6 @@ For example `C:\docs\report.pdf` is written to `%TEMP%\SeerOCR\081f0f17 - report
 ## Known Limitations
 
 - **Coordinates**: Bounding boxes in `ocr.json` are in screenshot pixel coordinates, not original document PDF coordinates.
-- **Orientation**: Line orientation correction supports 0° and 180° rotations; 90° / 270° rotated documents require pre-rotation.
-- **Error Presentation**: Control plugins run detached; runtime and model errors are written directly to `<fingerprint> - <filename>.ocr.txt` so the waiting window displays the explanation to the user.
+- **Orientation**: Line orientation correction supports 0° and 180° rotations; 90° / 270° rotated documents require pre-rotation. Barcode detection additionally tries 90°/180°/270° orientations and inverted (reversed-reflectance) symbols.
+- **Barcode Coverage**: QR Code, Data Matrix, Aztec, PDF417, Code 39/93/128, Codabar, ITF, EAN-8/13, UPC-A/E, DataBar and DX Film Edge are detected. Heavily blurred, very small, or truncated symbols may not decode.
+- **Error Presentation**: Control plugins run detached; runtime and model errors are written directly to `<fingerprint> - <filename>.ocr.txt` so the waiting window displays the explanation to the user. A barcode scan that itself fails (never observed in practice) is downgraded to a log entry and the text pipeline continues.

@@ -17,6 +17,11 @@
 #       PACKAGE_TARGET terminalhere_package
 #       STAGING_DIR ${TERMINAL_PACKAGE_STAGING_DIR})
 #
+# EXTENSION_TOKEN declares the package's single matcher token. A multi-type
+# package passes EXTENSION_TOKENS with one token per type instead
+# (EXTENSION_TOKENS "\${type_pdf}" "\${type_image}"); the install-time
+# contract then requires the manifest to list exactly those tokens in order.
+#
 # EXTENSION_TOKEN must be quoted with an escaped dollar sign so CMake passes
 # the literal token through instead of expanding it as a variable at configure
 # time; the same holds inside the generated install script, where the token is
@@ -36,16 +41,29 @@ function(seer_control_package_staging)
         PACKAGE_TARGET
         STAGING_DIR
     )
-    cmake_parse_arguments(PKG "" "${oneValueArgs}" "" ${ARGN})
+    set(multiValueArgs
+        EXTENSION_TOKENS
+    )
+    cmake_parse_arguments(PKG "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     foreach(_required
             PACKAGE_ID PACKAGE_NAME COMMAND_NAME COMMAND_TARGET
-            EXTENSION_TOKEN TEST_TARGET STAGE_TARGET PACKAGE_TARGET
+            TEST_TARGET STAGE_TARGET PACKAGE_TARGET
             STAGING_DIR)
         if(NOT PKG_${_required})
             message(FATAL_ERROR "seer_control_package_staging: missing ${_required}")
         endif()
     endforeach()
+
+    # A package matches either one token (EXTENSION_TOKEN) or several
+    # (EXTENSION_TOKENS); multi-type packages such as ocr need the list form.
+    if(NOT PKG_EXTENSION_TOKENS)
+        if(NOT PKG_EXTENSION_TOKEN)
+            message(FATAL_ERROR "seer_control_package_staging: missing "
+                                "EXTENSION_TOKEN or EXTENSION_TOKENS")
+        endif()
+        set(PKG_EXTENSION_TOKENS "${PKG_EXTENSION_TOKEN}")
+    endif()
 
     set(_package_readme "${CMAKE_CURRENT_SOURCE_DIR}/PACKAGE_README.md")
     if(NOT EXISTS "${_package_readme}")
@@ -94,6 +112,15 @@ function(seer_control_package_staging)
     install(FILES plugin.json DESTINATION .)
     install(FILES "${_package_readme}" DESTINATION . RENAME README.md)
 
+    # Emit one list(APPEND ...) per matcher. A single leading backslash only
+    # escapes the first "${" of a semicolon-separated list, so every token
+    # needs its own escaping to survive into the generated install script.
+    set(_expected_extensions_setup "")
+    foreach(_extension_token IN LISTS PKG_EXTENSION_TOKENS)
+        string(APPEND _expected_extensions_setup
+               "        list(APPEND _expected_extensions \"\\${_extension_token}\")\n")
+    endforeach()
+
     # Double-quoted string on purpose: ${PKG_*} expands at configure time and
     # every \${...} stays literal until the generated install script runs, so
     # the JSON check executes against the installed tree with the package's
@@ -117,15 +144,32 @@ function(seer_control_package_staging)
         string(JSON _command GET \"\${_manifest_json}\" command)
         string(JSON _extensions_length LENGTH \"\${_manifest_json}\" extensions)
         string(JSON _capabilities_length LENGTH \"\${_manifest_json}\" capabilities)
-        string(JSON _extension GET \"\${_manifest_json}\" extensions 0)
         string(JSON _capability GET \"\${_manifest_json}\" capabilities 0)
         string(JSON _timeout GET \"\${_manifest_json}\" timeout_ms)
+
+        # Every declared matcher must appear, in order, and nothing else. The
+        # list is built at configure time with one statement per token, each
+        # escaped so the host token is not expanded again here.
+        ${_expected_extensions_setup}
+        list(LENGTH _expected_extensions _expected_length)
+        set(_extensions_ok TRUE)
+        if(NOT _extensions_length EQUAL \${_expected_length})
+            set(_extensions_ok FALSE)
+        else()
+            set(_extension_index 0)
+            foreach(_expected_extension IN LISTS _expected_extensions)
+                string(JSON _extension GET \"\${_manifest_json}\" extensions \${_extension_index})
+                if(NOT _extension STREQUAL _expected_extension)
+                    set(_extensions_ok FALSE)
+                endif()
+                math(EXPR _extension_index \"\${_extension_index} + 1\")
+            endforeach()
+        endif()
 
         if(NOT _id STREQUAL \"${PKG_PACKAGE_ID}\"
            OR NOT _backend STREQUAL \"process\"
            OR NOT _command STREQUAL \"${PKG_COMMAND_NAME}\"
-           OR NOT _extensions_length EQUAL 1
-           OR NOT _extension STREQUAL \"\\${PKG_EXTENSION_TOKEN}\"
+           OR NOT _extensions_ok
            OR NOT _capabilities_length EQUAL 1
            OR NOT _capability STREQUAL \"control\"
            OR _timeout LESS 1)

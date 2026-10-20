@@ -15,6 +15,7 @@
     "${input_file}",
     "--ep=auto",
     "--cls=1",
+    "--barcode=1",
     "--wait-timeout=300000"
   ],
   "timeout_ms": 120000,

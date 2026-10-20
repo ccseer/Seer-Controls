@@ -11,6 +11,8 @@
 #include "paths.h"
 #include "geometry.h"
 #include "hash.h"
+#include "image_loader.h"
+#include "barcode.h"
 #include "output_writer.h"
 
 #define TEST_CHECK(expr) \
@@ -64,6 +66,7 @@ void testCommandLineParsing()
         TEST_CHECK(opts.input_file == L"sample.pdf");
         TEST_CHECK(opts.ep == ExecutionProvider::Auto);
         TEST_CHECK(opts.enable_cls == true);
+        TEST_CHECK(opts.enable_barcode == true);
         TEST_CHECK(opts.wait_timeout_ms == 120000);
         TEST_CHECK(opts.console == false);
     }
@@ -74,6 +77,7 @@ void testCommandLineParsing()
             L"SeerOcrWorker.exe",
             L"--ep=dml",
             L"--cls=0",
+            L"--barcode=0",
             L"--wait-timeout=15000",
             L"--console",
             L"--max-side=2048",
@@ -85,9 +89,24 @@ void testCommandLineParsing()
         TEST_CHECK(opts.valid);
         TEST_CHECK(opts.ep == ExecutionProvider::Dml);
         TEST_CHECK(opts.enable_cls == false);
+        TEST_CHECK(opts.enable_barcode == false);
         TEST_CHECK(opts.wait_timeout_ms == 15000);
         TEST_CHECK(opts.console == true);
         TEST_CHECK(opts.max_side == 2048);
+    }
+
+    // Space-separated flag form
+    {
+        std::vector<std::wstring> args = {
+            L"SeerOcrWorker.exe",
+            L"--barcode", L"0",
+            L"C:\\shot.png",
+            L"C:\\SeerViewer.exe",
+            L"sample.pdf"
+        };
+        auto opts = parseCommandLine(args);
+        TEST_CHECK(opts.valid);
+        TEST_CHECK(opts.enable_barcode == false);
     }
 
     // Missing positionals
@@ -206,14 +225,129 @@ void testJsonFormatting()
     l1.box[3][0] = 10; l1.box[3][1] = 40;
     lines.push_back(l1);
 
-    std::string json = formatOcrJson(meta, lines);
+    std::string json = formatOcrJson(meta, lines, {});
     TEST_CHECK(json.find("\"schema\": \"seer.ocr/1\"") != std::string::npos);
     TEST_CHECK(json.find("\"source_image\": \"C:\\\\Temp\\\\shot.png\"") != std::string::npos);
     TEST_CHECK(json.find("\"text\": \"Hello \\\"World\\\"\\nTest\"") != std::string::npos);
     TEST_CHECK(json.find("\"score\": 0.9876") != std::string::npos);
     TEST_CHECK(json.find("\"elapsed_ms\": 1234") != std::string::npos);
+    // Scan enabled by default: the key exists even with no barcodes found.
+    TEST_CHECK(json.find("\"barcodes\": []") != std::string::npos);
 
     std::cout << "[PASS] testJsonFormatting" << std::endl;
+}
+
+BarcodeResult makeBarcode(const std::string &format, const std::string &text,
+                          int x0, int y0, int x1, int y1)
+{
+    BarcodeResult bc;
+    bc.format = format;
+    bc.text   = text;
+    bc.box[0][0] = x0; bc.box[0][1] = y0;
+    bc.box[1][0] = x1; bc.box[1][1] = y0;
+    bc.box[2][0] = x1; bc.box[2][1] = y1;
+    bc.box[3][0] = x0; bc.box[3][1] = y1;
+    return bc;
+}
+
+void testBarcodeFormatting()
+{
+    OcrJsonMeta meta;
+    meta.source_image = "C:\\Temp\\shot.png";
+    meta.img_width    = 1000;
+    meta.img_height   = 800;
+    meta.ep_used      = "cpu";
+    meta.elapsed_ms   = 500;
+
+    std::vector<BarcodeResult> barcodes = {
+        makeBarcode("QRCode", "https://github.com/ccseer/Seer", 100, 100, 200, 200)
+    };
+
+    // JSON: the barcode block sits between "image" and "engine", quoting safe.
+    std::string json = formatOcrJson(meta, {}, barcodes);
+    TEST_CHECK(json.find("\"barcodes\": [\n") != std::string::npos);
+    TEST_CHECK(json.find("\"format\": \"QRCode\"") != std::string::npos);
+    TEST_CHECK(json.find("\"text\": \"https://github.com/ccseer/Seer\"") != std::string::npos);
+    TEST_CHECK(json.find("\"box\": [[100,100],[200,100],[200,200],[100,200]]") != std::string::npos);
+    TEST_CHECK(json.find("\"barcodes\"") < json.find("\"engine\""));
+    TEST_CHECK(json.find("\"elapsed_ms\": 500") != std::string::npos);
+
+    // JSON: --barcode=0 omits the key entirely (disabled, not "none found").
+    meta.barcode_scan = false;
+    TEST_CHECK(formatOcrJson(meta, {}, {}).find("\"barcodes\"") == std::string::npos);
+    meta.barcode_scan = true;
+
+    // Text: barcode block on top, quoted content stays verbatim.
+    OcrLineResult l1;
+    l1.index = 0;
+    l1.text  = "First line";
+    std::vector<OcrLineResult> lines = {l1};
+
+    std::string txt = formatOcrText(lines, barcodes);
+    const std::string rule(50, '=');
+    TEST_CHECK(txt.find(rule + "\r\n[QR Code / Barcode]\r\n") != std::string::npos);
+    TEST_CHECK(txt.find("Type: QRCode\r\n") != std::string::npos);
+    TEST_CHECK(txt.find("Content: https://github.com/ccseer/Seer\r\n") != std::string::npos);
+    TEST_CHECK(txt.find("\r\n\r\n[OCR Text]\r\nFirst line\r\n") != std::string::npos);
+    // Barcode section comes before the OCR text section.
+    TEST_CHECK(txt.find("[QR Code / Barcode]") < txt.find("[OCR Text]"));
+
+    // Barcode-only image: no [OCR Text] section is appended.
+    std::string txt_barcode_only = formatOcrText({}, barcodes);
+    TEST_CHECK(txt_barcode_only.find("[OCR Text]") == std::string::npos);
+    TEST_CHECK(txt_barcode_only.find("No text detected") == std::string::npos);
+
+    // No barcodes: byte-identical to the pre-barcode layout.
+    TEST_CHECK(formatOcrText(lines, {}) == "First line\r\n");
+    TEST_CHECK(formatOcrText({}, {}) == "No text detected in the current view.\r\n");
+
+    // Multiple barcodes keep their input (reading) order.
+    barcodes.push_back(makeBarcode("Code128", "440523", 10, 10, 90, 30));
+    std::string multi = formatOcrText({}, barcodes);
+    TEST_CHECK(multi.find("QRCode") < multi.find("Code128"));
+    TEST_CHECK(multi.find("Content: 440523") != std::string::npos);
+
+    std::cout << "[PASS] testBarcodeFormatting" << std::endl;
+}
+
+void testBarcodeScanFixture()
+{
+    // The fixture is a 148x148 QR PNG (scale 4, border 4, version 3) generated
+    // by test/tools/make_qr_fixture.py; the WIC loader decodes it and ZXing
+    // must round-trip the exact payload with an in-bounds position quad.
+    ImageRgb image;
+    std::wstring err;
+    TEST_CHECK(loadImageRgb(SEER_OCR_TEST_FIXTURES_DIR L"\\qr_seer.png", image, err));
+    TEST_CHECK(image.width == 148 && image.height == 148);
+
+    std::vector<BarcodeResult> barcodes;
+    std::string bc_err;
+    TEST_CHECK(detectBarcodes(image, barcodes, bc_err));
+    TEST_CHECK(barcodes.size() == 1);
+    if (barcodes.size() == 1) {
+        TEST_CHECK(barcodes[0].format == "QRCode");
+        TEST_CHECK(barcodes[0].text == "https://github.com/ccseer/Seer");
+        for (int k = 0; k < 4; ++k) {
+            TEST_CHECK(barcodes[0].box[k][0] >= 0 && barcodes[0].box[k][0] <= image.width);
+            TEST_CHECK(barcodes[0].box[k][1] >= 0 && barcodes[0].box[k][1] <= image.height);
+        }
+    }
+
+    // A blank image is a successful scan with no results, not an error.
+    ImageRgb blank;
+    blank.width  = 64;
+    blank.height = 64;
+    blank.data.assign(static_cast<size_t>(blank.width) * blank.height * 3, 0xFF);
+    barcodes.clear();
+    TEST_CHECK(detectBarcodes(blank, barcodes, bc_err));
+    TEST_CHECK(barcodes.empty());
+
+    // An empty buffer is a scan failure, never a crash.
+    barcodes.clear();
+    TEST_CHECK(!detectBarcodes(ImageRgb{}, barcodes, bc_err));
+    TEST_CHECK(!bc_err.empty());
+
+    std::cout << "[PASS] testBarcodeScanFixture" << std::endl;
 }
 
 void testGeometryAndSorting()
@@ -365,6 +499,8 @@ int main()
     testPathSanitization();
     testOutputBaseNameIsDirectoryScoped();
     testJsonFormatting();
+    testBarcodeFormatting();
+    testBarcodeScanFixture();
     testGeometryAndSorting();
     testUnclipUnorderedCloud();
     testReadingOrderBands();

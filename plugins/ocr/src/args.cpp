@@ -83,6 +83,14 @@ OcrCliOptions parseCommandLine(const std::vector<std::wstring> &args)
             const auto val = args[++i];
             opts.enable_cls = (val != L"0");
         }
+        else if (startsWith(arg, L"--barcode=")) {
+            const auto val = arg.substr(10);
+            opts.enable_barcode = (val != L"0");
+        }
+        else if (arg == L"--barcode" && i + 1 < args.size()) {
+            const auto val = args[++i];
+            opts.enable_barcode = (val != L"0");
+        }
         else if (startsWith(arg, L"--max-side=")) {
             try {
                 opts.max_side = std::stoi(arg.substr(11));

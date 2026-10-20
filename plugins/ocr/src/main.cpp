@@ -12,6 +12,7 @@
 #include "cleanup.h"
 #include "hash.h"
 #include "image_loader.h"
+#include "barcode.h"
 #include "ort_loader.h"
 #include "ocr_pipeline.h"
 #include "output_writer.h"
@@ -127,7 +128,19 @@ int runOcr(const OcrCliOptions &opts, const OcrOutputPaths &paths,
         return failWith(paths, "Image decoding failed: " + toUtf8(img_err), 2, opts.console);
     }
 
-    // 6. Perform OCR pipeline
+    // 6. Barcode detection (pure CPU, independent of the ONNX session).
+    // A scan failure must not sink the run: degrade to text-only and record
+    // why in the session log, matching the text pipeline's self-responsibility.
+    std::vector<BarcodeResult> barcodes;
+    if (opts.enable_barcode) {
+        std::string bc_err;
+        if (!detectBarcodes(image, barcodes, bc_err)) {
+            writeOcrLog(paths.log_path, "Barcode scan skipped: " + bc_err);
+            barcodes.clear();
+        }
+    }
+
+    // 7. Perform OCR pipeline
     std::vector<OcrLineResult> lines;
     std::string ep_used;
     std::string fallback_reason;
@@ -147,7 +160,7 @@ int runOcr(const OcrCliOptions &opts, const OcrOutputPaths &paths,
         return failWith(paths, "OCR recognition failed: " + run_log, 4, opts.console);
     }
 
-    // 7. Write outputs
+    // 8. Write outputs
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start_time).count();
 
@@ -157,19 +170,21 @@ int runOcr(const OcrCliOptions &opts, const OcrOutputPaths &paths,
     meta.img_height   = image.height;
     meta.ep_used      = ep_used;
     meta.fallback     = !fallback_reason.empty();
+    meta.barcode_scan = opts.enable_barcode;
     meta.elapsed_ms   = elapsed_ms;
 
-    if (!writeOcrJsonAtomically(paths.json_path, meta, lines)) {
+    if (!writeOcrJsonAtomically(paths.json_path, meta, lines, barcodes)) {
         return failWith(paths, "Failed to write json output: " + toUtf8(paths.json_path), 6, opts.console);
     }
 
     // The txt rename is the completion signal for the waiting SeerViewer job, so
     // it stays the last step.
-    if (!writeOcrTextAtomically(paths.txt_path, lines)) {
+    if (!writeOcrTextAtomically(paths.txt_path, lines, barcodes)) {
         return failWith(paths, "Failed to write text output: " + toUtf8(paths.txt_path), 6, opts.console);
     }
 
-    std::string log_msg = "Completed: " + std::to_string(lines.size()) + " lines in "
+    std::string log_msg = "Completed: " + std::to_string(lines.size()) + " lines, "
+                        + std::to_string(barcodes.size()) + " barcodes in "
                         + std::to_string(elapsed_ms) + " ms, EP=" + ep_used;
     if (!fallback_reason.empty()) {
         log_msg += " (Fallback: " + fallback_reason + ")";
@@ -221,7 +236,7 @@ int runWorker()
         }
         if (opts.console) {
             std::wcerr << L"Error: " << opts.error_msg << std::endl;
-            std::wcerr << L"Usage: SeerOcrWorker.exe <screenshot> <seerviewer_exe> <input_file> [--ep=auto|cpu|dml] [--cls=0|1] [--wait-timeout=<ms>] [--console]" << std::endl;
+            std::wcerr << L"Usage: SeerOcrWorker.exe <screenshot> <seerviewer_exe> <input_file> [--ep=auto|cpu|dml] [--cls=0|1] [--barcode=0|1] [--wait-timeout=<ms>] [--console]" << std::endl;
         }
         return 1;
     }
