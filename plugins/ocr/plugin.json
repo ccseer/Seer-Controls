@@ -4,7 +4,7 @@
   "name": "OCR Text",
   "description": "Extract text from the current view with on-device OCR.",
   "version": "1.0.0",
-  "appMinVersion": "4.8.0",
+  "appMinVersion": "4.7.10",
   "backend": "process",
   "capabilities": ["control"],
   "extensions": ["${type_pdf}", "${type_image}"],

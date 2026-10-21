@@ -1,5 +1,5 @@
 # Packaging script for Seer OCR Control Plugin
-# Produces io.1218.seer.ocr-1.0.0.zip with flat package root.
+# Produces ocr-1.0.0.zip with flat package root.
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File package.ps1
@@ -164,12 +164,12 @@ if (Test-Path "models") {
     Copy-Item "models" -Destination $stageDir -Recurse -Force
 }
 
-Write-Host "=== Step 3: Compressing to io.1218.seer.ocr-1.0.0.zip ===" -ForegroundColor Cyan
+Write-Host "=== Step 3: Compressing to ocr-1.0.0.zip ===" -ForegroundColor Cyan
 $suffix = if ($Dev) { "-dev" } else { "" }
-$zipFile = Join-Path $scriptDir "dist\io.1218.seer.ocr-1.0.0$suffix.zip"
+$zipFile = Join-Path $scriptDir "dist\ocr-1.0.0$suffix.zip"
 # ZipFile::CreateFromDirectory refuses to overwrite, and deleting a ~200 MB
 # archive through the shell can fail; build under a scratch name and swap it in.
-$tmpZip = Join-Path $scriptDir ("dist\io.1218.seer.ocr-1.0.0$suffix.zip.tmp")
+$tmpZip = Join-Path $scriptDir ("dist\ocr-1.0.0$suffix.zip.tmp")
 if (Test-Path $tmpZip) {
     [System.IO.File]::Delete($tmpZip)
 }

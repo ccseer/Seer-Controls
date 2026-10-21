@@ -82,7 +82,7 @@ if(MSVC)
 endif()
 target_link_libraries(ocr_core PUBLIC ZXing::ZXing windowscodecs ole32 shell32 user32 advapi32 bcrypt)
 
-add_executable(SeerOcrWorker WIN32 src/main.cpp)
+add_executable(SeerOcrWorker WIN32 src/main.cpp res/seer_ocr.rc)
 target_link_libraries(SeerOcrWorker PRIVATE ocr_core)
 if(MSVC)
     target_compile_options(SeerOcrWorker PRIVATE /W4 /WX /utf-8 /EHsc)

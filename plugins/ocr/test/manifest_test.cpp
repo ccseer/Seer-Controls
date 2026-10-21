@@ -29,8 +29,8 @@ int main(int argc, char *argv[])
 
     // ${screenshot} and SeerViewer --wait-file both arrived in 4.8.0, so an
     // older host can neither expand the argument nor open the pending window.
-    check(package.appMinVersion == "4.8.0",
-          "the declared minimum host version is 4.8.0");
+    check(package.appMinVersion == "4.7.10",
+          "the declared minimum host version is 4.7.10");
 
     // The only multi-type package in the repository: both matchers, in order.
     check(package.extensions.size() == 2

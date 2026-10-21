@@ -4,7 +4,7 @@ This independently downloadable Seer Canonical v1 Control package extracts text 
 
 It is a multi-type Control package: it appears for PDF documents (`${type_pdf}`) and images (`${type_image}`).
 
-**Requires Seer 4.8.0 or later.** The package consumes `${screenshot}` (added in 4.8.0) and asks `SeerViewer.exe` to wait for a file it has not written yet (`--wait-file`, also 4.8.0). On an older host the manifest's `${screenshot}` argument is an unknown token and the launched viewer does not understand `--wait-file`, so the plugin cannot work; `appMinVersion` in `plugin.json` pins this.
+**Requires Seer 4.7.10 or later.** The package consumes `${screenshot}` and asks `SeerViewer.exe` to wait for a file it has not written yet (`--wait-file`). On an older host the manifest's `${screenshot}` argument is an unknown token and the launched viewer does not understand `--wait-file`, so the plugin cannot work; `appMinVersion` in `plugin.json` pins this.
 
 The package interface in `plugin.json` is fixed:
 
@@ -14,7 +14,7 @@ The package interface in `plugin.json` is fixed:
 - command: package-relative `SeerOcrWorker.exe`
 - arguments: `["${screenshot}", "${seerviewer_exe}", "${input_file}", "--ep=auto", "--cls=1", "--barcode=1", "--wait-timeout=300000"]`
 - `timeout_ms`: 120000
-- `appMinVersion`: `4.8.0`
+- `appMinVersion`: `4.7.10`
 - `success_exit_codes`: `[0]`
 - `close_after_success`: `false`
 
@@ -108,7 +108,7 @@ powershell -ExecutionPolicy Bypass -File .\package.ps1
 The script builds the Release binary out-of-tree, stages all required assets, and creates:
 
 ```text
-dist/io.1218.seer.ocr-1.0.0.zip
+dist/ocr-1.0.0.zip
 ├── plugin.json
 ├── README.md               # User-facing README staged from PACKAGE_README.md
 ├── SeerOcrWorker.exe       # Pure Win32 C++17 helper, statically links ZXing-C++ (readers) and the CRT
