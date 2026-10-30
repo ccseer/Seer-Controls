@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "io.1218.seer.hex-viewer",
+  "name": "Hex View",
+  "version": "1.0.0",
+  "author": "corey",
+  "description": "Fast and lightweight binary hex dump viewer for any file.",
+  "appMinVersion": "4.7.11",
+  "backend": "process",
+  "capabilities": ["control"],
+  "extensions": ["${type_file}"],
+  "command": "seer_hex.exe",
+  "arguments": [
+    "${input_file}",
+    "${seerviewer_exe}",
+    "--max-kb=64",
+    "--wait-timeout=30000"
+  ],
+  "timeout_ms": 60000,
+  "success_exit_codes": [0],
+  "close_after_success": false
+}

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE language>
+<language name="HexDump" section="Other"
+          extensions="*.hextxt" version="2" priority="100" kateversion="5.0"
+          mimetype="text/x-hexdump" author="corey" license="MIT">
+  <highlighting>
+    <contexts>
+      <context name="Dump" attribute="Normal" lineEndContext="#stay">
+        <!-- the 8-digit offset opens every data row -->
+        <RegExpr String="^[0-9A-Fa-f]{8}(?=\s{5})" attribute="Offset" context="DataRow"/>
+        <!-- the column ruler above the dump -->
+        <RegExpr String="^Offset\(h\).*$" attribute="ColumnHeader" context="#stay"/>
+        <!-- banner and footer blocks: [Seer Hex Dump], [Truncated], ... -->
+        <RegExpr String="^\[.*\]$" attribute="Banner" context="#stay"/>
+        <!-- inline severity markers: [Truncated], [End of File: ...], [Read Error] -->
+        <RegExpr String="\[[^\]]*\]" attribute="Banner" context="#stay"/>
+      </context>
+      <context name="DataRow" attribute="Normal" lineEndContext="#pop">
+        <!-- the 16-char framed ASCII column at the end of a row (may contain '|') -->
+        <RegExpr String="\|.{16}\|$" attribute="Ascii" context="#stay"/>
+        <!-- hex byte pairs in the 16-byte grid -->
+        <RegExpr String="\b[0-9A-Fa-f]{2}\b" attribute="HexByte" context="#stay"/>
+      </context>
+    </contexts>
+    <itemDatas>
+      <itemData name="Normal" defStyleNum="dsNormal"/>
+      <itemData name="Offset" defStyleNum="dsFunction"/>
+      <itemData name="HexByte" defStyleNum="dsDataType"/>
+      <itemData name="Ascii" defStyleNum="dsString"/>
+      <itemData name="ColumnHeader" defStyleNum="dsComment"/>
+      <itemData name="Banner" defStyleNum="dsAlert"/>
+    </itemDatas>
+  </highlighting>
+  <general>
+    <comments>
+      <comment name="multiLine" start="/*" end="*/"/>
+    </comments>
+    <keywords casesensitive="0"/>
+  </general>
+</language>
