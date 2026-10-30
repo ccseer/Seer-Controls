@@ -138,3 +138,4 @@ CMakeUserPresets.json
 ### OCR plugin: large binary weights and archives are distributed outside git
 plugins/ocr/models/*.onnx
 plugins/ocr/models/*.tar
+ignored/*
