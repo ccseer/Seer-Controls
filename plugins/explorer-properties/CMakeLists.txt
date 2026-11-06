@@ -10,7 +10,11 @@ enable_testing()
 add_library(shellverb_core STATIC src/shellverb.cpp)
 target_include_directories(shellverb_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-add_executable(shellverb_properties WIN32 src/main.cpp)
+add_executable(shellverb_properties WIN32 src/main.cpp res/shellverb_properties.rc)
+# The .rc embeds shellverb_properties.ico, which CMake cannot infer from the script text; without
+# this an edited icon would keep the previous resource in an incremental build.
+set_source_files_properties(res/shellverb_properties.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/shellverb_properties.ico")
 target_include_directories(shellverb_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../common)
 
 target_link_libraries(shellverb_properties PRIVATE shellverb_core Shell32.lib)

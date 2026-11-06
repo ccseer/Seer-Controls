@@ -30,7 +30,11 @@ target_link_libraries(filelock_core PUBLIC
     ole32 shell32 user32 advapi32 gdi32 Rstrtmgr
 )
 
-add_executable(file_lock_info WIN32 src/main.cpp)
+add_executable(file_lock_info WIN32 src/main.cpp res/file_lock_info.rc)
+# The .rc embeds file_lock_info.ico, which CMake cannot infer from the script text; without
+# this an edited icon would keep the previous resource in an incremental build.
+set_source_files_properties(res/file_lock_info.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/file_lock_info.ico")
 target_link_libraries(file_lock_info PRIVATE filelock_core)
 if(MSVC)
     target_compile_options(file_lock_info PRIVATE /W4 /WX)

@@ -28,7 +28,11 @@ if(MSVC)
 endif()
 target_link_libraries(folderlisting_core PUBLIC ole32 shell32 user32 advapi32 gdi32)
 
-add_executable(copy_folder_listing WIN32 src/main.cpp)
+add_executable(copy_folder_listing WIN32 src/main.cpp res/copy_folder_listing.rc)
+# The .rc embeds copy_folder_listing.ico, which CMake cannot infer from the script text; without
+# this an edited icon would keep the previous resource in an incremental build.
+set_source_files_properties(res/copy_folder_listing.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/copy_folder_listing.ico")
 target_link_libraries(copy_folder_listing PRIVATE folderlisting_core)
 if(MSVC)
     target_compile_options(copy_folder_listing PRIVATE /W4 /WX)

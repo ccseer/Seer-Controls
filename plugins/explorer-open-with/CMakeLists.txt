@@ -14,7 +14,11 @@ target_include_directories(openwith_core PUBLIC
 )
 target_link_libraries(openwith_core PUBLIC shell32)
 
-add_executable(shellopenwith WIN32 src/main.cpp)
+add_executable(shellopenwith WIN32 src/main.cpp res/shellopenwith.rc)
+# The .rc embeds shellopenwith.ico, which CMake cannot infer from the script text; without
+# this an edited icon would keep the previous resource in an incremental build.
+set_source_files_properties(res/shellopenwith.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/shellopenwith.ico")
 target_link_libraries(shellopenwith PRIVATE openwith_core shell32)
 
 add_executable(shellopenwith_test test/openwith_test.cpp)

@@ -26,7 +26,12 @@ target_link_libraries(share_core PUBLIC windowsapp ole32 user32 shell32)
 
 add_executable(seer_share WIN32
     src/main.cpp
+    res/seer_share.rc
 )
+# The .rc embeds seer_share.ico, which CMake cannot infer from the script text; without
+# this an edited icon would keep the previous resource in an incremental build.
+set_source_files_properties(res/seer_share.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/seer_share.ico")
 target_link_libraries(seer_share PRIVATE share_core)
 
 add_executable(share_test

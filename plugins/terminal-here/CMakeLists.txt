@@ -32,7 +32,11 @@ if(MSVC)
 endif()
 target_link_libraries(terminalhere_core PUBLIC ole32 shell32 user32 advapi32 gdi32)
 
-add_executable(terminal_here WIN32 src/main.cpp)
+add_executable(terminal_here WIN32 src/main.cpp res/terminal_here.rc)
+# The .rc embeds terminal_here.ico, which CMake cannot infer from the script text; without
+# this an edited icon would keep the previous resource in an incremental build.
+set_source_files_properties(res/terminal_here.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/terminal_here.ico")
 target_link_libraries(terminal_here PRIVATE terminalhere_core)
 if(MSVC)
     target_compile_options(terminal_here PRIVATE /W4 /WX /utf-8)
