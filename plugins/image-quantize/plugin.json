@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "io.1218.seer.image-quantize",
+  "name": "Quantize Image",
+  "description": "Writes a palette-reduced PNG (up to 256 colors, alpha preserved) next to the image.",
+  "version": "1.0.0",
+  "appMinVersion": "4.7.10",
+  "backend": "process",
+  "capabilities": [
+    "control"
+  ],
+  "extensions": [
+    "${type_image}"
+  ],
+  "command": "image_quantize.exe",
+  "arguments": [
+    "--input",
+    "${input_file}",
+    "--seerviewer",
+    "${seerviewer_exe}",
+    "--wait-timeout=300000"
+  ],
+  "close_after_success": false,
+  "timeout_ms": 300000,
+  "success_exit_codes": [
+    0
+  ]
+}

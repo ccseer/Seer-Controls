@@ -1,0 +1,84 @@
+{
+  "label": "SPEC-003 Phase 2, Wu splitter plus k-means refinement, sRGB nearest neighbour",
+  "hash_covers": "palette || transparent_index || indices",
+  "params": {
+    "max_colors": 256,
+    "dither": "none",
+    "color_space": "srgb",
+    "alpha_mode": "straight",
+    "threads": 4
+  },
+  "compiler_flags": "/W4 /WX /utf-8 /EHsc /fp:precise, _MT",
+  "fixtures": [
+    {
+      "fixture": "test/data/real/photo_01_portrait_skin.png",
+      "path": "3",
+      "sha256": "83452795fb50baf4339b33f2137c6891edd358fb525e8673c3cc5824cd5caba0"
+    },
+    {
+      "fixture": "test/data/real/photo_03_sky_gradient.png",
+      "path": "3",
+      "sha256": "a7d5544d0d3b09ce6bb9ec90e19ac27803d44cdb6ac5ca130f79e74e6a569f26"
+    },
+    {
+      "fixture": "test/data/real/ui_01_light.png",
+      "path": "1",
+      "sha256": "5f8bc125dc57e4bb8c83d215a032f5353d78597b7b940185a5a3efef66df7f0e"
+    },
+    {
+      "fixture": "test/data/real/ui_02_dark.png",
+      "path": "1",
+      "sha256": "74e669302881367066e77e138baff83024d34c1acc7cb2cdb876a1c246f01f31"
+    },
+    {
+      "fixture": "test/data/real/large_01_4k.png",
+      "path": "3",
+      "sha256": "7ce87f87f24664f415643aa5283f5faea3c5b97a651df8014e9d3891399d1871"
+    },
+    {
+      "fixture": "test/data/generated/synthetic_2color_16x16.png",
+      "path": "1",
+      "sha256": "d1025b9bb481cb0fa6ce461904f0c33ae09beed370830fb4b5dd351e1b34d4ab"
+    },
+    {
+      "fixture": "test/data/generated/synthetic_256color_16x16.png",
+      "path": "1",
+      "sha256": "968401bb26fbc6d8cf699a2fd018c57a6df06716c2f228637a5785c713c7093f"
+    },
+    {
+      "fixture": "test/data/generated/synthetic_checkerboard_8x8.png",
+      "path": "1",
+      "sha256": "0b519605bd8db14fa067ca08a4dcb7ec0746e1287b00fc1d8a886133f6eb5dd7"
+    },
+    {
+      "fixture": "test/data/generated/synthetic_color_gradient_1024x1.png",
+      "path": "2",
+      "sha256": "dc6a020c18dc4b3725b98243039c59d7e4d1ae15551d533c5701489d527fa037"
+    },
+    {
+      "fixture": "test/data/generated/synthetic_gray_ramp_1024x1.png",
+      "path": "1",
+      "sha256": "2a2ba31275af92dfe2bda9231f8ce0551c53deee88aaaa8f6562afebaa698153"
+    },
+    {
+      "fixture": "test/data/generated/synthetic_noise_128x128.png",
+      "path": "3",
+      "sha256": "746e87a655cf5769a4b4d8ebf97a4d3cb515da11324810f76c0cb36b95997c79"
+    },
+    {
+      "fixture": "test/data/generated/alpha_soft_shadow_64x64.png",
+      "path": "1",
+      "sha256": "e861ccbf79d0d269698665a3b8e3f270ccbd220030166378a8f88adca7c6590c"
+    },
+    {
+      "fixture": "test/data/generated/alpha_glass_64x64.png",
+      "path": "1",
+      "sha256": "4e9b437b6b438a25b47d223f8e2f21d7f80bcb34a3a48db536b40c0c0eb058ef"
+    },
+    {
+      "fixture": "test/data/generated/collision_300_one_cell_20x15.png",
+      "path": "2",
+      "sha256": "d0be80303ed6db865ae91c503a9528d37e84e3b0869d02caba459c4e807cbe32"
+    }
+  ]
+}
