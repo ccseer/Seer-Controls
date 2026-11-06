@@ -36,10 +36,10 @@ std::wstring createFile(const std::wstring &directory, const std::wstring &name)
         CloseHandle(handle);
     return path;
 }
-// The host renders a failed Control action's stderr and nothing else, so a
-// non-zero exit without a written reason is a failure the user cannot act on.
-// Capturing the pipe is the only way to assert that contract; the capture itself
-// is shared with the other packages that assert it.
+// stderr is the test-observable half of the failure contract; the helper also
+// presents the reason in its own dialog. Capturing the pipe is the only way to
+// assert the text without a modal window, and the capture is shared with the
+// other packages that assert it.
 
 }  // namespace
 
@@ -80,8 +80,11 @@ int main()
                 info->hProcess = nullptr;
                 return TRUE;
             });
-        check(result == 0 && ready && error.empty(),
-              "accepts an existing Shell process handoff without a local window");
+        check(result == shellverb::kShellFailureExitCode && !ready
+                  && error.find(L"no dialog window appeared")
+                         != std::wstring::npos,
+              "a null process handle without a window is a failure, not a silent "
+              "success");
     }
     {
         const auto window = CreateWindowExW(
@@ -196,8 +199,8 @@ int main()
     calls = 0;
     std::string refused;
     {
-        // Captured, because an uncaptured run would print the host-facing
-        // refusal next to this test's own FAIL: lines.
+        // Captured, because an uncaptured run would print the refusal next to
+        // this test's own FAIL: lines.
         StderrHarness::Capture capture;
         check(shellverb::run({L"shellverb_properties.exe", L"--input"}, succeeds)
                       == shellverb::kArgumentErrorExitCode
@@ -208,8 +211,8 @@ int main()
     check(refused.find("Properties could not start") != std::string::npos,
           "explains an argument refusal on stderr, not just the exit code");
 
-    // A refusal comes back as text for the host to render, whichever half of the
-    // handoff raised it, so the wording is part of that contract.
+    // A refusal comes back as text for the caller to present, whichever half of
+    // the handoff raised it, so the wording is part of that contract.
     {
         std::wstring error;
         check(!shellverb::parseArguments(
@@ -218,7 +221,7 @@ int main()
                   &error)
                   && error.find(L"Properties could not start")
                          != std::wstring::npos,
-              "a validation refusal comes back worded for the host");
+              "a validation refusal comes back worded for the user");
     }
 
     const auto handoffShow = [](const std::vector<std::wstring> &, const auto &,
@@ -258,7 +261,7 @@ int main()
     }
 
     // A launcher-side refusal happens before any reason channel exists, so it has
-    // to reach the host through stderr. The validator here is the real one, so
+    // to stay observable in tests. The validator here is the real one, so
     // the wording and the channel are both covered by production code rather than
     // by a stub that could not fail this way.
     {
@@ -284,8 +287,7 @@ int main()
         }
         check(launcherRefusal.find("Properties could not start")
                   != std::string::npos,
-              "a launcher-side refusal explains itself on the stderr the host "
-              "reads");
+              "a launcher-side refusal explains itself on its own stderr");
     }
 
     DeleteFileW(spacedPath.c_str());

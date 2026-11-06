@@ -4,6 +4,20 @@ project(explorer_share LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# The package must run on a machine that has Seer but not necessarily the VC++
+# redistributable, so every target (helper and tests alike) links the runtime
+# statically; mixing static and dynamic CRT TUs would trip LNK4098.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+# Sources are UTF-8 without a byte order mark, so the compiler must not guess
+# the active code page. /W4 /WX apply to every target so the gate cannot
+# decay through a test-only build.
+if(MSVC)
+    add_compile_options(/utf-8 /W4 /WX /EHsc)
+endif()
+
+add_compile_definitions(UNICODE _UNICODE NOMINMAX)
+
 if(NOT DEFINED CPPWINRT_INCLUDE_DIR OR NOT EXISTS "${CPPWINRT_INCLUDE_DIR}/winrt/base.h")
     message(FATAL_ERROR "CPPWINRT_INCLUDE_DIR must be set to a directory containing winrt/base.h")
 endif()
@@ -62,4 +76,13 @@ seer_control_package_staging(
     STAGE_TARGET share_manifest_stage
     PACKAGE_TARGET share_package
     STAGING_DIR ${SHARE_MANIFEST_STAGING_DIR}
+    PACKAGE_ZIP_NAME "explorer-share-1.2.0.zip"
 )
+
+# A detached helper shows its own failure dialog. Tests inherit this switch
+# so refusals stay observable on stderr instead of blocking on a modal window.
+get_property(_seer_control_tests DIRECTORY PROPERTY TESTS)
+if(_seer_control_tests)
+    set_tests_properties(${_seer_control_tests} PROPERTIES
+        ENVIRONMENT "SEER_TEST_NO_UI=1")
+endif()

@@ -64,9 +64,9 @@ LockQuery systemLockQuery();
 std::wstring formatReportText(const LockReport &report);
 
 // Runs the query and shows the report in a system-owned modal dialog. A query
-// that failed is not a report: it opens no dialog and its reason goes to the
-// host's failure channel instead. The helper exits once the user dismisses the
-// dialog, so the presentation stays inside the manifest timeout.
+// that failed is not a report: it opens the helper's error dialog instead. The
+// helper exits once the user dismisses the report, so nothing lingers in the
+// background.
 int run(const std::vector<std::wstring> &arguments, const LockQuery &query);
 int run(const std::vector<std::wstring> &arguments);
 

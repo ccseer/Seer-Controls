@@ -1,6 +1,6 @@
 # Terminal Here Control
 
-**Terminal Here Control** is an official Canonical v1 Control plugin for [Seer](https://1218.io/), the file preview tool for Windows. It opens a command prompt or terminal window with its starting directory set to the currently previewed folder.
+Opens a command prompt or terminal window with its starting directory set to the currently previewed folder.
 
 ## Options & Arguments
 

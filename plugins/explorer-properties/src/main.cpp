@@ -6,20 +6,29 @@
 #include <string>
 #include <vector>
 
+#include "dpi.h"
 #include "shellverb.h"
 #include "shelluiworker.h"
 #include "wintext.h"
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
+    WinDpi::enablePerMonitorV2();
+
     const HRESULT comResult = CoInitializeEx(
         nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    if (FAILED(comResult))
+    if (FAILED(comResult)) {
+        WinText::writeStandardError(
+            L"Properties could not start: COM initialization failed: "
+            + WinText::systemErrorMessage(static_cast<DWORD>(comResult)));
         return shellverb::kShellFailureExitCode;
+    }
 
     int argc        = 0;
     const auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv) {
+        WinText::writeStandardError(
+            L"Properties could not start: the command line could not be read.");
         CoUninitialize();
         return shellverb::kArgumentErrorExitCode;
     }
@@ -41,8 +50,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         arguments,
         [&](const std::vector<std::wstring> &args)
             -> std::optional<std::wstring> {
-            // The refusal travels back to the handoff, which knows the channel
-            // that reaches the host from whichever process it is running in.
+            // The refusal travels back to the handoff, which knows how to
+            // present it from whichever process it is running in.
             requested = shellverb::parseArguments(args, &error);
             if (requested) {
                 return std::nullopt;

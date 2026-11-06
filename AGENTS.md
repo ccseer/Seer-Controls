@@ -163,12 +163,14 @@ ctest --preset default
   shared mutable state between invocations.
 - Helpers keep a system-owned dialog open with the two-process UI handoff
   (`shelluiworker.h`): the launcher returns as soon as the worker signals
-  readiness, and the worker owns the dialog for its whole lifetime so the
-  host timeout never bounds user interaction. Helpers never draw a window of
-  their own; results reach the user through the exit code, stderr, the
-  clipboard or a system dialog.
-- Completion is reported through the helper's exit code against the manifest's
-  `success_exit_codes`; standard output is never rendered by the host.
+  readiness, and the worker owns the dialog for its whole lifetime, so user
+  interaction is bounded by the user rather than by the host. Helpers never draw
+  a window of their own; results reach the user through the clipboard, a system
+  dialog, a separate viewer window or the helper's own error dialog.
+- A Control helper is launched detached and then unobserved: the host does not
+  read its exit code, does not capture stdout or stderr, and applies no timeout.
+  Exit codes and stderr therefore serve the helper's own tests and diagnostics,
+  and every failure the user must see is presented by the helper itself.
 - Each package's developer `README.md` documents every option, the dependency
   policy, what a successful invocation means, what happens on cancellation, and
   a manual acceptance checklist. Update it whenever a package's behavior

@@ -4,15 +4,22 @@
 #include <functional>
 #include <optional>
 
+#include "dpi.h"
 #include "share.h"
 #include "shelluiworker.h"
+#include "wintext.h"
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
+    WinDpi::enablePerMonitorV2();
+
     int argc        = 0;
     const auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    if (!argv)
+    if (!argv) {
+        WinText::writeStandardError(
+            L"Sharing could not start: the command line could not be read.");
         return 2;
+    }
 
     std::vector<std::wstring> arguments;
     arguments.reserve(static_cast<size_t>(argc));
@@ -21,8 +28,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
     const int result = ShellUiWorker::run(arguments,
         [](const auto &args) -> std::optional<std::wstring> {
-            // The refusal travels back to the handoff, which knows the channel
-            // that reaches the host from whichever process it is running in.
+            // The refusal travels back to the handoff, which knows how to
+            // present it from whichever process it is running in.
             std::wstring error;
             if (parseArguments(args, &error).valid) {
                 return std::nullopt;

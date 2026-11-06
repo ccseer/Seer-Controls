@@ -1,4 +1,4 @@
-# Quantize Image (developer README)
+# Quantize Image
 
 Canonical v1 Control package that reduces the current image to at most 256
 colours and writes an indexed PNG next to the source. The host passes only

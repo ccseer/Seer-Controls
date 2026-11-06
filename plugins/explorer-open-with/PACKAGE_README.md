@@ -1,6 +1,6 @@
 # Explorer Open With Control
 
-**Explorer Open With Control** is an official Canonical v1 Control plugin for [Seer](https://1218.io/), the file preview tool for Windows. It opens the native Windows "Open With" dialog for the currently previewed file.
+Opens the native Windows "Open With" dialog for the currently previewed file.
 
 ## Options & Arguments
 

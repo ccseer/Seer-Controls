@@ -32,7 +32,7 @@ struct HelperRun {
     std::wstring standardError;
 };
 
-// stderr is the only failure channel the host reads, so it cannot be checked
+// stderr is the test-observable failure channel, so it cannot be checked
 // from inside the process: a redirected pipe is the only way to observe what
 // the helper actually wrote.
 HelperRun runHelper(const std::wstring &helper,
@@ -99,8 +99,8 @@ void testHelperProcess(const std::wstring &helper)
         return;
     }
 
-    // A rejected request must explain itself on stderr, because the host renders
-    // stderr and nothing else for a failed Control action.
+    // A rejected request must explain itself to the user, and the helper mirrors
+    // that reason to stderr, which is the only channel a test can observe.
     const auto rejected = runHelper(helper, {});
     check(rejected.started, "the helper starts");
     check(rejected.exitCode == kArgumentErrorExitCode,
@@ -144,9 +144,9 @@ int main(int argc, char *argv[])
         check(received == path && owner == nullptr, "invoker arguments");
         return S_OK;
     };
-    // The in-process paths must not touch the test's real stderr, which the host
-    // would read as a failure of this very run; capture the reason instead so
-    // the message is still asserted.
+    // The in-process paths must not touch the test's real stderr, which would
+    // read as a failure of this very run; capture the reason instead so the
+    // message is still asserted.
     std::wstring reported;
     const ErrorSink capture = [&](const std::wstring& message) {
         reported = message;

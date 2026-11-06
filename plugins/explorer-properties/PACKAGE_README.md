@@ -1,9 +1,10 @@
 # Explorer Properties Control
 
-**Explorer Properties Control** is an official Canonical v1 Control plugin for [Seer](https://1218.io/), the file preview tool for Windows. It opens the native Windows system Properties dialog for the currently previewed file.
+Opens the native Windows system Properties dialog for the currently previewed file.
 
-If Windows handles the request in an existing Shell process, success confirms
-that Windows accepted the handoff; the plugin cannot verify the external dialog.
+Success means the Properties window appeared. The helper watches for it and
+reports a failure when there is none after three seconds, so a Shell call that
+is accepted but shows nothing is never mistaken for a result.
 
 ## Options & Arguments
 

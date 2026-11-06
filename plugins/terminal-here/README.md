@@ -1,5 +1,22 @@
 # Terminal Here
 
+## Host execution model
+
+Seer starts Control helpers with `QProcess::startDetached`. A launch counts as
+successful as soon as the operating system accepts it; the host does not wait
+for the process, does not read its exit code, does not capture stdout or stderr,
+applies no `timeout_ms`, and never kills the helper's process tree. Success is
+silent: only a launch-time failure produces a host toast.
+
+This helper therefore presents every failure it raises in its own system-owned
+message box. The stderr write is kept as a test-observable diagnostic channel;
+CTest sets `SEER_TEST_NO_UI=1` so refusals stay on stderr instead of opening a
+modal dialog. `timeout_ms` and `success_exit_codes` remain in the manifest for
+schema completeness and the manifest test, and `appMinVersion` is `4.8.0`, the
+first host with this execution model. `close_after_success` is `false` so the
+preview window stays open after the launch.
+
+
 This independently downloadable Seer Canonical v1 Control package opens a
 terminal window in the current folder. It is a whole-matcher Control: it appears
 for folders, not for files.
@@ -111,9 +128,10 @@ non-zero exit as the only failure signal the documented interface provides.
 the known launcher or shell with a validated argument array. UAC is never
 bypassed, no policy is changed, and no scheduled task is created.
 
-- Cancelling the consent prompt returns a non-zero exit code, so Seer does not
-  apply its close-after-success behaviour. It is cancellation, not a successful
-  launch and not a silent non-admin fallback.
+- Cancelling the consent prompt returns a non-zero exit code and the helper
+  shows its own cancellation window. The host never inspects that exit code;
+  close-after-success is a manifest setting applied at launch time, not a
+  response to the result.
 - The elevation hop is bounded to 90 s, because the prompt belongs to the user.
 - `ShellExecuteExW` returns only after the elevated process exists. That is the
   strongest signal available across an elevation boundary; the elevated starting
@@ -122,7 +140,7 @@ bypassed, no policy is changed, and no scheduled task is created.
 - An elevated Command Prompt still cannot start in a UNC directory, so that
   combination is rejected before elevation is attempted.
 
-## Success, failure and cancellation
+## Success and failure
 
 Exit code `0` means the requested terminal is up:
 
@@ -135,9 +153,9 @@ Exit code `0` means the requested terminal is up:
   shell that exits inside that window is reported as a failure with its exit
   code, because it never gave the user a prompt.
 
-Failures report through standard error: every failure writes its reason there,
-and Seer shows it in a toast over the preview window. The launcher returns
-non-zero:
+Failures are shown by the helper in its own system message box and also
+written to stderr for tests. Seer shows no toast for them: it stops observing
+the helper at launch. The launcher returns non-zero:
 
 | Exit code | Meaning |
 |---|---|
@@ -150,9 +168,10 @@ non-zero:
 | `6` | the selection is not an existing directory |
 | `7` | Windows Terminal did not confirm the handoff in time |
 
-Cancellation: Seer cancels a Control by terminating the helper's process tree.
-The launcher runs for at most about 8 s (Windows Terminal) or 400 ms (console
-shells) and owns no child after that, so nothing is left modifying anything. The
+Cancellation: there is nothing for the host to cancel. It neither waits for
+nor terminates the helper's process tree after the launch. The launcher runs
+for at most about 8 s (Windows Terminal) or 400 ms (console shells) and owns
+no child after that, so nothing is left modifying anything. The
 terminal window is started outside the helper's containment job and keeps running
 after the helper exits, which is the intended lifetime contract for a UI child.
 
@@ -166,8 +185,8 @@ after the helper exits, which is the intended lifetime contract for a UI child.
   the visible-window check remains a manual acceptance item.
 - If Seer owns a job that forbids breaking away, a terminal that is launched
   anyway may inherit that job and therefore close when Seer closes. The launch
-  still succeeds and the downgrade is reported nowhere: a successful control
-  has no output channel the host would render, so the user is not told that
+  still succeeds and the downgrade is reported nowhere: a successful launch
+  has no output channel, so the user is not told that
   this happened. This is the one case where the terminal window may not
   outlive Seer.
 
@@ -177,7 +196,7 @@ No third-party dependency. The helper resolves the installed shells at run time
 and never downloads or installs anything. The VC++ runtime is linked statically,
 so the package contains only `plugin.json` and `terminal_here.exe`; `dumpbin
 -dependents` on the shipped helper lists only `ole32`, `SHELL32`, `USER32`,
-`ADVAPI32`, `GDI32` and `KERNEL32`.
+`ADVAPI32` and `KERNEL32`.
 
 ## Build and test
 
@@ -212,9 +231,13 @@ and restore the previous text when the previous content was text.
 ## Install and acceptance
 
 ```powershell
-cmake --install "<your-build-dir>" --prefix dist
-Compress-Archive -Path dist/* -DestinationPath terminal-here-1.0.0.zip
+cmake --build --preset default --target terminalhere_package
 ```
+
+The package target runs the manifest contract test first and then writes
+`dist/terminal-here-1.1.0.zip`, whose root holds `plugin.json`, the helper and
+`README.md`. `cmake --install "<your-build-dir>" --prefix dist` still produces
+the same tree when an installed layout is what you need.
 
 The install step validates that the manifest and helper are present under the
 same package root and that the fixed contract is intact. Create the archive only
@@ -235,8 +258,8 @@ Manual acceptance still required on a real Seer installation:
   exactly one control action.
 - Select a folder with a trailing separator, a Chinese name, and a name
   containing `;`, and confirm the terminal opens in that folder.
-- Press the control twice quickly and confirm Seer reports one invocation per
-  press and no terminal is started twice for the same press.
+- Press the control twice quickly and confirm exactly one terminal is started
+  per press; the host stays silent on success.
 - With `--admin`, confirm the UAC prompt appears, that cancelling it leaves Seer
   open (no close-after-success) and shows the cancellation window, and that
   accepting it opens an **elevated** terminal already in the selected folder.

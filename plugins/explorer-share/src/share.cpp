@@ -52,8 +52,8 @@ bool isUnsupportedShareError(const HRESULT hr)
 ParsedInput parseArguments(const std::vector<std::wstring> &arguments,
                            std::wstring *error)
 {
-    // Worded for the user, because the host renders this text verbatim for a
-    // refused action; the caller only picks the channel that carries it.
+    // Worded for the user, because this text is shown verbatim in the helper's
+    // error dialog for a refused action; the caller only picks the channel.
     auto fail = [error](const wchar_t *message) {
         if (error) {
             *error = std::wstring(L"Sharing could not start: ") + message;
@@ -115,8 +115,8 @@ std::wstring describeFailure(const HRESULT result)
 int run(const std::vector<std::wstring> &arguments, ISharePlatform &platform,
         std::function<void()> onReady, const ErrorReport &report)
 {
-    // The showing half runs where nothing host-readable is written to stderr, so
-    // a failure has to be reported or the host renders an unexplained code.
+    // The showing half has no channel of its own, so a failure has to be
+    // reported or the user sees an unexplained code.
     const auto announce = [&](const std::wstring &message) {
         if (report) {
             report(message);
@@ -129,8 +129,9 @@ int run(const std::vector<std::wstring> &arguments, ISharePlatform &platform,
     const auto parsed = parseArguments(arguments, &error);
     if (!parsed.valid) {
         // announce picks the channel: the launcher's report when this runs in
-        // the detached worker, and stderr for the entry point that has none.
-        // Either way the refusal is explained instead of only coded.
+        // the detached worker, and the helper's error dialog for the entry point
+        // that has none. Either way the refusal is explained instead of only
+        // coded.
         announce(error);
         return 2;
     }
@@ -285,8 +286,8 @@ HRESULT WindowsSharePlatform::show(const std::wstring &path,
 
     const auto startTime = std::chrono::steady_clock::now();
     // Named and shared, because this wait happens before readiness is signalled
-    // and therefore has to be covered by the manifest timeout; the assertion
-    // that checks that budget reads the same constant.
+    // and therefore has to fit inside the launcher's readiness window; the
+    // assertion that checks that budget reads the same constant.
     const auto kTimeout  = std::chrono::milliseconds(kSharePayloadWaitMs);
 
     while (!dataPopulated) {

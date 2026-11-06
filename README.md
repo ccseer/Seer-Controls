@@ -6,21 +6,48 @@ Official control plugins for [Seer](https://1218.io/).
 
 ### Shipped
 
+Nine packages are published on the [official downloads page](https://1218.io/docs/seer/download#controls):
+
 - [Explorer Open With](./plugins/explorer-open-with): Opens the Windows "Open With" dialog for the current regular file.
 - [Explorer Properties](./plugins/explorer-properties): Opens the Windows Properties dialog for the current regular file.
 - [Explorer Share](./plugins/explorer-share): Opens the Windows system Share UI for the current regular file.
-
-### Control packages
-
-These three packages implement the Seer Canonical v1 Control contract: one
-`plugin.json`, one package-relative helper, `capabilities: ["control"]`, and a
-whole-file or whole-folder matcher. Each has its own README documenting every
-option, its dependency policy, what a successful invocation means, what happens
-on cancellation, and a manual acceptance checklist.
-
 - [Terminal Here](./plugins/terminal-here): Opens a terminal window in the current folder. Chooses between Windows Terminal, PowerShell 7, Windows PowerShell and Command Prompt, and documents the Windows Terminal `;` escaping that CRT quoting does not solve.
 - [Copy Folder Listing](./plugins/copy-folder-listing): Copies a bounded, deterministic plain-text listing of the current folder's first level to the clipboard, one entry per line, with visible link, inaccessible and truncation markers.
-- [Who Is Locking This File](./plugins/file-lock-info): A read-only Restart Manager report for the current file, copied to the clipboard.
+- [OCR Text](./plugins/ocr): Extracts text from the current view (PDF or image) with local on-device OCR, with built-in QR/barcode detection.
+- [Hex View](./plugins/hex-viewer): Generates a classic 16-byte hex dump of any file and shows it instantly in a separate window.
+- [Quantize Image](./plugins/image-quantize): Compresses the image into a high-quality palette PNG (up to 256 colors, alpha preserved) next to the source, offline with Oklab perceptual quantization and Floyd-Steinberg dithering.
+- [Who Is Locking This File](./plugins/file-lock-info): A read-only Restart Manager report for the current file, shown in a system-owned modal dialog.
+
+### Package contract
+
+Every package implements the Seer Canonical v1 Control contract: one
+`plugin.json`, one package-relative helper, `capabilities: ["control"]`, and a
+whole-file or whole-folder matcher. Each has its own README documenting its
+options, dependency policy, what a successful invocation means, and a manual
+acceptance checklist.
+
+## Host execution model
+
+Seer starts every Control helper with `QProcess::startDetached` and keeps no
+process handle. A launch counts as successful as soon as the operating system
+accepts it: the host does not wait for the helper, does not read its exit code,
+does not capture stdout or stderr, applies no `timeout_ms`, and never cancels
+or kills the helper's process tree. Success is silent, with no toast. A helper
+therefore keeps running after the preview window is hidden or after Seer exits.
+
+The only failures Seer reports are launch-time failures: an empty or
+unresolvable command, a start refused by the operating system, a rejected
+argument, or a `${screenshot}` capture that could not be prepared. Those are
+shown in an in-app toast, and the preview window shakes but stays open. A
+helper that starts successfully and then fails must present that failure to
+the user itself; stderr is diagnostics only.
+
+In a Control manifest, `timeout_ms` and `success_exit_codes` are accepted but
+ignored. `close_after_success` defaults to true, so the preview window is
+hidden on a successful launch, but only while the originating preview is still
+visible and the previewed path has not changed; set it to false to keep the
+window open. See the [Control plugin development guide](./plugin_development_guide.md)
+for the full contract.
 
 ## Shared code
 
@@ -35,10 +62,11 @@ separately discoverable plugin. It is header-only and contains:
   launcher returns as soon as the dialog signals readiness, and the worker owns
   the dialog for its whole lifetime.
 - `wincmd.h`, `winpath.h`, `winproc.h`, `winclip.h`, `winexit.h`, `wintext.h` —
-  shared utilities used by every package. The helpers draw no UI of their own:
-  a successful run is reported by its exit code, its result goes to the
-  clipboard or a system dialog, and every failure reason is written to stderr,
-  which the host renders as a failure toast.
+  shared utilities used by the native packages. The helpers draw no window of
+  their own: results go to the clipboard, a system dialog, or a separate
+  viewer window, and failure reasons are written to stderr for diagnostics.
+  The host observes neither the exit code nor the output of a Control helper;
+  see Host execution model above.
 - `test/` — a minimal check harness, a cross-process probe fixture, the shared
   assertions that run in every new package, and the manifest/staging assertions
   each package builds on.
@@ -70,6 +98,17 @@ Without the local preset file, configure with an explicit out-of-repo `-B`
 directory instead. `explorer-share` additionally needs
 `-DCPPWINRT_INCLUDE_DIR="<Windows SDK>/Include/<version>/cppwinrt"`.
 
+Each package also exposes a `<package>_package` target that runs its manifest
+contract test. Packages whose staged tree is exactly the three contract files
+then write a flat ZIP under their `dist` directory, so the published archive is
+always built from a tree the contract just accepted. A package that stages extra
+content (`hex-viewer`'s syntax definition, `ocr`'s models and runtime,
+`image-quantize`'s images) keeps its own packaging script instead:
+
+```powershell
+cmake --build --preset default --target <package>_package
+```
+
 Sources are UTF-8 without a byte order mark, so the MSVC builds pass `/utf-8`
 rather than letting the compiler guess the active code page.
 
@@ -80,4 +119,3 @@ rather than letting the compiler guess the active code page.
 - [Official control plugin downloads](https://1218.io/docs/seer/download#controls)
 - [Seer Plugins (Viewers)](https://github.com/ccseer/Seer-plugins)
 - [Seer Properties](https://github.com/ccseer/Seer-Properties)
-

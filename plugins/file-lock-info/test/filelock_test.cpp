@@ -103,23 +103,22 @@ void testArgumentParsing(const std::wstring &file)
 void testReportFormatting()
 {
     const auto empty = filelock::formatReportText(reportWith(0));
-    check(empty.find(L"No users reported by Restart Manager.")
-              != std::wstring::npos,
+    check(empty.find(L"No application reported.") != std::wstring::npos,
           "an empty result uses the exact documented wording");
-    check(empty.find(L"not a complete list") != std::wstring::npos,
-          "the standing limitation note is present");
-    check(empty.find(L"--admin argument") != std::wstring::npos,
-          "a non-elevated report explains the admin rerun");
+    check(empty.find(L"driver, a protected process") != std::wstring::npos,
+          "the empty result names the cases it cannot see");
+    check(empty.find(L"administrator") == std::wstring::npos,
+          "an empty result does not offer an irrelevant administrator hint");
 
     const auto two = filelock::formatReportText(reportWith(2));
-    check(two.find(L"2 user(s) reported by Restart Manager") != std::wstring::npos,
-          "the number of users is reported");
+    check(two.find(L"2 application(s) using this file") != std::wstring::npos,
+          "the number of applications is reported");
     check(two.find(L"app0") != std::wstring::npos
               && two.find(L"PID:  1000") != std::wstring::npos,
           "each user reports its name and identifier");
     check(two.find(L"C:\\apps\\app0.exe") != std::wstring::npos,
           "an accessible executable path is shown");
-    check(two.find(L"process identifier no longer matches") != std::wstring::npos,
+    check(two.find(L"process identifier changed") != std::wstring::npos,
           "a reused identifier withholds the details instead of misreporting");
     check(two.find(L"Started: ") != std::wstring::npos,
           "a known start time is shown");
@@ -131,22 +130,39 @@ void testReportFormatting()
           "exactly 3 users does not show an omitted note");
 
     const auto five = filelock::formatReportText(reportWith(5));
-    check(five.find(L"5 user(s) reported by Restart Manager") != std::wstring::npos,
-          "the total user count is reported");
+    check(five.find(L"5 application(s) using this file") != std::wstring::npos,
+          "the total application count is reported");
     check(five.find(L"app2") != std::wstring::npos,
           "the third user is rendered");
     check(five.find(L"app3") == std::wstring::npos
               && five.find(L"app4") == std::wstring::npos,
           "users beyond the limit are not rendered in full");
-    check(five.find(L"... and 2 more user(s) holding this file (3 of 5 shown).")
+    check(five.find(L"... and 2 more application(s) using this file (3 of 5 shown).")
               != std::wstring::npos,
           "an omitted count note is present when users exceed the display limit");
 
     auto elevated = reportWith(0);
     elevated.elevated = true;
-    check(filelock::formatReportText(elevated).find(L"--admin argument")
+    check(filelock::formatReportText(elevated).find(L"administrator")
               == std::wstring::npos,
-          "an elevated report does not offer the admin rerun");
+          "an elevated report does not offer an administrator hint");
+
+    auto unreadable = reportWith(1);
+    unreadable.users[0].executableAccessible = false;
+    unreadable.users[0].executablePath.clear();
+    const auto hidden = filelock::formatReportText(unreadable);
+    check(hidden.find(L"Executable: not accessible") != std::wstring::npos,
+          "an unreadable path is stated plainly");
+    check(hidden.find(L"Some details need administrator rights.")
+              != std::wstring::npos,
+          "only an unreadable path offers the administrator hint");
+
+    auto elevatedUnreadable = unreadable;
+    elevatedUnreadable.elevated = true;
+    check(filelock::formatReportText(elevatedUnreadable)
+                  .find(L"even with administrator rights")
+              != std::wstring::npos,
+          "an elevated report does not suggest elevating again");
 
     auto failed = reportWith(0);
     failed.ok       = false;
@@ -155,7 +171,7 @@ void testReportFormatting()
     const auto text = filelock::formatReportText(failed);
     check(text.find(L"not available") != std::wstring::npos,
           "a failed query shows its message");
-    check(text.find(L"No users reported") == std::wstring::npos,
+    check(text.find(L"No application reported") == std::wstring::npos,
           "a failed query is not presented as an empty result");
 }
 
@@ -173,7 +189,7 @@ void testRestartManagerBackend(const std::wstring &root,
                        + WinText::toUtf8(idle.message));
     check(idle.users.empty(),
           "a file nobody holds is reported as having no users");
-    check(filelock::formatReportText(idle).find(L"No users reported")
+    check(filelock::formatReportText(idle).find(L"No application reported")
               != std::wstring::npos,
           "the idle case uses the documented wording");
 
@@ -232,9 +248,8 @@ void testRestartManagerBackend(const std::wstring &root,
     WinProc::terminateChild(&holder);
 }
 
-// The failed-query contract of the presentation change: a query that failed is
-// not a report, so it opens no dialog and its reason goes to the host's
-// failure channel instead. The test completing at all is part of the proof: a
+// The failed-query contract: a query that failed is not a report, so it opens no
+// result dialog and its reason goes to the helper's error dialog instead. The test completing at all is part of the proof: a
 // wrongly opened dialog would block this process until ctest kills it. The
 // success path ends in the modal system dialog itself and is covered by the
 // manual acceptance list in the README, because an in-process call would block
@@ -257,7 +272,7 @@ void testFailedQueryIsNeverPresented(const std::wstring &file)
           "a failed query reports the query's own exit code");
     check(written.find("the Restart Manager is not available")
               != std::string::npos,
-          "a failed query explains itself on the host's failure channel");
+          "a failed query explains itself on the helper's error channel");
 
     // A backend refusal that carries no specific exit code still fails the
     // action instead of presenting an error text as a result.

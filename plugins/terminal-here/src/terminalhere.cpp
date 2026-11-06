@@ -436,8 +436,8 @@ int run(const std::vector<std::wstring> &arguments, const ShellLocator &locator)
     std::wstring error;
     const auto request = parseArguments(arguments, &error);
     if (!request) {
-        // The host surfaces the captured stderr of a failed Control action in
-        // a toast, so the reason is written there instead of a window.
+        // The host does not read a Control helper's stderr, so the failure has to
+        // reach the user from this process; writeStandardError raises the dialog.
         WinText::writeStandardError(error);
         return WinExit::kUsage;
     }

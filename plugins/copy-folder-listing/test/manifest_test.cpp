@@ -26,10 +26,10 @@ int main(int argc, char *argv[])
           "manifest name is Copy Folder Listing");
     check(package.command == "copy_folder_listing.exe",
           "command is the fixed Copy Folder Listing helper");
-    check(package.appMinVersion == "4.5.11",
-          "the declared minimum host version is unchanged");
-    check(package.version == "1.0.0",
-          "manifest version is 1.0.0");
+    check(package.appMinVersion == "4.8.0",
+          "the declared minimum host version is the detached host baseline");
+    check(package.version == "1.1.0",
+          "manifest version is 1.1.0");
     check(isExactStringArray(member(package.root, "extensions"),
                              "${type_folder}"),
           "extensions contains the folder type token");

@@ -413,6 +413,10 @@ inline bool load(const std::filesystem::path &packageRoot,
           std::string(label) + ": arguments is a string array");
     check(package->backend == "process",
           std::string(label) + ": backend is process");
+    const auto *closeAfterSuccess = member(package->root, "close_after_success");
+    check(closeAfterSuccess && closeAfterSuccess->kind == JsonValue::Kind::Boolean
+          && closeAfterSuccess->stringValue == "false",
+          std::string(label) + ": close_after_success is explicitly false");
     check(package->capabilities.size() == 1
               && package->capabilities.front() == "control",
           std::string(label) + ": capabilities contains only control");

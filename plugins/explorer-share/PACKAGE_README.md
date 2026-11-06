@@ -1,6 +1,6 @@
 # Explorer Share Control
 
-**Explorer Share Control** is an official Canonical v1 Control plugin for [Seer](https://1218.io/), the file preview tool for Windows. It opens the modern Windows system Share UI panel for the currently previewed file using the Windows Runtime (WinRT) `DataTransferManager` API.
+Opens the modern Windows system Share UI panel for the currently previewed file using the Windows Runtime (WinRT) `DataTransferManager` API.
 
 ## Options & Arguments
 

@@ -45,9 +45,9 @@ struct Options {
     // A UI process can take several seconds to appear on a cold start, and the
     // readiness event only fires once the intended UI exists. The budget is
     // generous because the visible-window check below makes its exact value
-    // less critical, but it still has to stay below the package's manifest
-    // timeout: the host bounds the launcher even though it never bounds the
-    // worker that owns the UI.
+    // less critical. The host does not bound a Control helper, so this window
+    // is the only limit on how long the launcher waits before it reports a
+    // failure the user can see.
     DWORD readyTimeoutMs = 15000;
 };
 
@@ -59,9 +59,12 @@ struct Options {
 //     therefore be no longer than Options::readyTimeoutMs, or readiness can
 //     never arrive in time and the handoff fails on a worker that is healthy.
 //   * kLauncherOverheadMs is what the launcher itself costs on top of that
-//     window: process creation, its own polling, and teardown. The host's
-//     manifest timeout bounds the launcher, so it has to exceed
-//     readyTimeoutMs plus this.
+//     window: process creation, its own polling, and teardown.
+//
+// totalHandoffBudgetMs is the number the package records in its manifest
+// timeout_ms and what the manifest test compares against. The host accepts that
+// field but does not enforce it for a Control action, so the number documents
+// the real bound instead of imposing one.
 inline constexpr DWORD kLauncherOverheadMs = 3000;
 
 // How long a worker waits for the UI it is responsible for before giving up and
@@ -75,11 +78,11 @@ inline DWORD totalHandoffBudgetMs(const Options &options = Options())
     return options.readyTimeoutMs + kLauncherOverheadMs;
 }
 
-// The worker is spawned detached with no handle inheritance, so it inherits no
-// stderr and the host can never read a reason it writes there. A refusal that
-// happens in the worker only reaches the host as the launcher's exit code, which
-// is why the worker reports its message over a named channel the launcher owns
-// and the launcher re-emits it on its own stderr.
+// The worker is spawned detached with no handle inheritance, so the host never
+// reads anything it writes. A refusal that happens in the worker reaches the
+// launcher only as an exit code, which is why the worker reports its message
+// over a named channel the launcher owns and the launcher presents it in its
+// own error dialog.
 //
 // The mapping is created by the launcher BEFORE the worker starts, for the same
 // reason the readiness event is: a mapping created by the writer alone would be
@@ -139,10 +142,11 @@ inline bool publishReason(const std::wstring &eventName,
 
 // `validate` returns the reason it refused, or an empty optional to accept. It
 // does not report the refusal itself, because the two halves of this handoff
-// need it on different channels -- the worker can only reach the host through
-// the launcher's reason buffer, the launcher only through its own stderr -- and
-// a reason handed back to the caller is one that cannot be dropped on either
-// side. `show` receives the report to use for anything it fails at afterwards.
+// need it on different channels -- the worker can only reach the launcher
+// through the reason buffer, the launcher only through its own error dialog --
+// and a reason handed back to the caller is one that cannot be dropped on
+// either side. `show` receives the report to use for anything it fails at
+// afterwards.
 template<typename Validate, typename Show>
 int run(std::vector<std::wstring> arguments, Validate validate, Show show,
         const Options &options = Options())
@@ -152,12 +156,12 @@ int run(std::vector<std::wstring> arguments, Validate validate, Show show,
         const auto readyName = arguments[4];
         Handle ready(OpenEventW(EVENT_MODIFY_STATE, FALSE, readyName.c_str()));
         arguments.resize(3);
-        // This process is detached with no inherited handles, so nothing it
-        // writes to stderr is readable by the host. The named channel the
-        // launcher owns is the only way a refusal raised here can be explained.
+        // This process is detached with no inherited handles, so the host
+        // never reads anything it writes. The named channel the launcher owns
+        // is the only way a refusal raised here can be explained to the user.
         const auto report = [&](const std::wstring &message) {
             publishReason(readyName, message);
-            WinText::writeStandardError(message);
+            WinText::writeStandardError(message, 256, false);
         };
         if (!ready) {
             report(L"The UI worker could not open the handoff event.");
@@ -169,7 +173,7 @@ int run(std::vector<std::wstring> arguments, Validate validate, Show show,
         }
         return show(arguments, [&] { SetEvent(ready.get()); }, report);
     }
-    // The launcher runs where the host reads stderr directly, and this happens
+    // The launcher owns the user-visible failure presentation, and this happens
     // before the reason channel exists, so its own channel is the only one
     // available here.
     if (const auto refusal = validate(arguments)) {
@@ -179,23 +183,51 @@ int run(std::vector<std::wstring> arguments, Validate validate, Show show,
 
     GUID guid{};
     wchar_t guidText[40]{};
-    if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, guidText, 40))
+    const HRESULT guidResult = CoCreateGuid(&guid);
+    if (FAILED(guidResult)) {
+        WinText::writeStandardError(
+            L"Cannot create the identifier that names the UI handoff: "
+            + WinText::systemErrorMessage(static_cast<DWORD>(guidResult)));
         return 1;
+    }
+    if (!StringFromGUID2(guid, guidText, 40)) {
+        WinText::writeStandardError(
+            L"Cannot format the identifier that names the UI handoff.");
+        return 1;
+    }
     const auto eventName = std::wstring(L"Local\\SeerPluginUi-") + guidText;
     Handle ready(CreateEventW(nullptr, TRUE, FALSE, eventName.c_str()));
-    if (!ready)
+    if (!ready) {
+        WinText::writeStandardError(
+            L"Cannot create the UI readiness event: "
+            + WinText::systemErrorMessage(GetLastError()));
         return 1;
+    }
     // Created before the worker starts and held for the launcher's whole
     // lifetime, so the worker's write has somewhere to land.
     const auto reasonChannel = createReasonChannel(eventName);
-    if (!reasonChannel)
+    if (!reasonChannel) {
+        WinText::writeStandardError(
+            L"Cannot create the channel the UI worker reports through: "
+            + WinText::systemErrorMessage(GetLastError()));
         return 1;
+    }
 
     std::vector<wchar_t> executable(32768);
     const auto length = GetModuleFileNameW(nullptr, executable.data(),
                                            static_cast<DWORD>(executable.size()));
-    if (!length || length >= executable.size())
+    if (!length) {
+        WinText::writeStandardError(
+            L"Cannot resolve this helper's own executable path: "
+            + WinText::systemErrorMessage(GetLastError()));
         return 1;
+    }
+    if (length >= executable.size()) {
+        WinText::writeStandardError(
+            L"Cannot resolve this helper's own executable path: it is longer "
+            L"than the supported maximum.");
+        return 1;
+    }
     auto command = WinCmd::quoteArgument(executable.data());
     for (size_t i = 1; i < arguments.size(); ++i)
         command += L" " + WinCmd::quoteArgument(arguments[i]);
@@ -205,16 +237,25 @@ int run(std::vector<std::wstring> arguments, Validate validate, Show show,
     PROCESS_INFORMATION process{};
     if (!CreateProcessW(executable.data(), command.data(), nullptr, nullptr, FALSE,
                          DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED,
-                         nullptr, nullptr, &startup, &process))
+                         nullptr, nullptr, &startup, &process)) {
+        WinText::writeStandardError(
+            L"Cannot start the UI worker: "
+            + WinText::systemErrorMessage(GetLastError()));
         return 1;
+    }
     Handle child(process.hProcess);
     Handle thread(process.hThread);
     AllowSetForegroundWindow(process.dwProcessId);
     if (ResumeThread(thread.get()) == static_cast<DWORD>(-1)) {
+        const DWORD resumeError = GetLastError();
         TerminateProcess(child.get(), 1);
+        WinText::writeStandardError(
+            L"Cannot resume the UI worker: "
+            + WinText::systemErrorMessage(resumeError));
         return 1;
     }
-    // The host timeout covers launch, not the user's time in a system dialog.
+    // The launcher bounds its own wait; the user's time in the system dialog
+    // afterwards is not part of it.
     const ULONGLONG deadline = GetTickCount64() + options.readyTimeoutMs;
     int result               = 1;
     for (;;) {
@@ -231,7 +272,7 @@ int run(std::vector<std::wstring> arguments, Validate validate, Show show,
             // the intended UI never appeared.
             result = code == 0 ? 1 : static_cast<int>(code);
             // Re-emit whatever the worker reported before it died; without this
-            // the host would see an exit code with no reason at all.
+            // the user would see a silent failure with no reason at all.
             const auto reason = readReason(reasonChannel);
             if (!reason.empty())
                 WinText::writeStandardError(reason);

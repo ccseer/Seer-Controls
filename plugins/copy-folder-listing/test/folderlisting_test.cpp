@@ -175,6 +175,66 @@ void testArgumentParsing(const std::wstring &source)
           "a missing input is rejected");
 }
 
+void testSeparator(const std::wstring &source)
+{
+    std::wstring error;
+    const auto defaults = folderlisting::parseArguments(
+        makeArgv({L"x.exe", L"--input", source.c_str()}), &error);
+    check(defaults && defaults->separator == L"\r\n",
+          "the separator defaults to CRLF");
+
+    const auto named = folderlisting::parseArguments(
+        makeArgv({L"x.exe", L"--input", source.c_str(), L"--separator",
+                  L"comma"}),
+        &error);
+    check(named && named->separator == L",", "a named separator is expanded");
+
+    const auto escaped = folderlisting::parseArguments(
+        makeArgv({L"x.exe", L"--input", source.c_str(), L"--separator",
+                  L"\\n"}),
+        &error);
+    check(escaped && escaped->separator == L"\n",
+          "an escaped separator is expanded");
+
+    const auto literal = folderlisting::parseArguments(
+        makeArgv({L"x.exe", L"--input", source.c_str(), L"--separator",
+                  L" | "}),
+        &error);
+    check(literal && literal->separator == L" | ",
+          "a literal separator keeps its spacing");
+
+    const auto none = folderlisting::parseArguments(
+        makeArgv({L"x.exe", L"--input", source.c_str(), L"--separator",
+                  L"none"}),
+        &error);
+    check(none && none->separator.empty(),
+          "the none form removes the separator");
+
+    check(!folderlisting::parseArguments(
+              makeArgv({L"x.exe", L"--input", source.c_str(), L"--separator",
+                        L"\\x"}))
+               .has_value(),
+          "an unknown escape is rejected");
+    check(!folderlisting::parseArguments(
+              makeArgv({L"x.exe", L"--input", source.c_str(), L"--separator",
+                        L"\\"}))
+               .has_value(),
+          "a lone trailing backslash is rejected");
+    check(!folderlisting::parseArguments(
+              makeArgv({L"x.exe", L"--input", source.c_str(), L"--separator",
+                        L"0123456789abcdefg"}))
+               .has_value(),
+          "a separator beyond the character limit is rejected");
+
+    folderlisting::Request request;
+    request.root      = source;
+    request.separator = L", ";
+    const auto result = folderlisting::buildListing(request);
+    check(result.ok && result.listing.find(L"\r\n") == std::wstring::npos
+              && result.listing.find(L", ") != std::wstring::npos,
+          "a custom separator replaces CRLF in the rendered listing");
+}
+
 void testShapeAndOrdering(const std::wstring &source)
 {
     folderlisting::Request request;
@@ -414,7 +474,7 @@ void testClipboardPaths(const std::wstring &source)
     check(result.message.find(L"selected") == std::wstring::npos,
           "the failure message does not promise text the helper never shows");
     check(result.message.size() <= 200,
-          "the failure message fits the stderr budget the host actually reads");
+          "the failure message fits the budget the helper's dialog can show");
 
     // A non-empty folder whose every entry is filtered out must not silently
     // succeed with a stale clipboard: the writer must never be reached and the
@@ -551,7 +611,7 @@ void testHelperProcess(const std::wstring &helper)
         std::cout << "  [skip] the helper path was not provided\n";
         return;
     }
-    // stderr is the only failure channel the host reads, so the usage refusal
+    // stderr is the test-observable failure channel, so the usage refusal
     // must land there while stdout stays empty even on a failed start.
     const auto run = runHelper(helper, {});
     check(run.exitCode == WinExit::kUsage,
@@ -621,6 +681,8 @@ int main(int argc, char *argv[])
     testPatterns();
     TestHarness::section("copy-folder-listing: argument parsing");
     testArgumentParsing(source);
+    TestHarness::section("copy-folder-listing: separators");
+    testSeparator(source);
     TestHarness::section("copy-folder-listing: shape and ordering");
     testShapeAndOrdering(source);
     TestHarness::section("copy-folder-listing: limits");

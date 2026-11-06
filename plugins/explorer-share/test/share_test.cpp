@@ -209,8 +209,8 @@ int main()
               "launch readiness is reported when share data is populated");
         ready = false;
         platform.simulateTimeout = true;
-        // No report here, so this refusal has to reach stderr; capturing it also
-        // keeps the host-facing text out of ctest output.
+        // No report here, so this refusal has to reach the helper's own error
+        // channel; capturing it also keeps that text out of ctest output.
         std::string refused;
         {
             StderrHarness::Capture capture;
@@ -224,8 +224,8 @@ int main()
     }
 
     // The showing half runs in the detached worker, so a report handed in by the
-    // launcher is the only way an explanation survives to the host; without one
-    // the failure would reach the user as a bare exit code.
+    // launcher is the only way an explanation reaches the user; without one the
+    // failure would arrive as a bare exit code.
     {
         FakeSharePlatform platform;
         platform.resultToReturn = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
@@ -245,12 +245,12 @@ int main()
                   {L"seer_share.exe", L"--input", validFile.wstring(), L"--extra"},
                   &error).valid
                   && error.find(L"Sharing could not start") != std::wstring::npos,
-              "an argument refusal comes back worded for the host");
+              "an argument refusal comes back worded for the user");
     }
 
-    // The single-argument entry point and any caller that passes no report have
-    // no channel but stderr. Without this the refusal would return 2 carrying a
-    // reason that is written nowhere at all.
+    // The single-argument entry point and any caller that passes no report still
+    // own the helper's error dialog. Without that fallback the refusal would
+    // return 2 carrying a reason that is presented nowhere at all.
     {
         FakeSharePlatform platform;
         std::string written;
@@ -352,8 +352,8 @@ int main()
               "handler was removed on generic failure exit path");
     }
 
-    // Each exit code above has to arrive with an explanation, since the host
-    // renders the reason rather than the code.
+    // Each exit code above has to arrive with an explanation, because the exit
+    // code alone never reaches the user.
     const auto refusals = failureRefusals.drain();
     check(refusals.find("Sharing did not open") != std::string::npos,
           "a payload timeout is explained to the user");

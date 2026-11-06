@@ -4,13 +4,13 @@
 
 #include <string>
 
-// Captures the calling process's standard-error handle so a test can assert what
-// a helper told the host, and so host-facing text a test provokes does not leak
-// into ctest output as unexplained noise.
+// Captures the calling process's standard-error handle so a test can assert the
+// diagnostic a helper wrote, and so text a test provokes does not leak into
+// ctest output as unexplained noise.
 //
 // It lives here rather than in one package's test because more than one package
-// asserts the same contract: every Control helper has to explain a refusal on
-// the stream the host renders.
+// asserts the same contract: every Control helper writes a refusal to the
+// diagnostic stream and presents it to the user itself.
 namespace StderrHarness {
 
 class Capture {

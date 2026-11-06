@@ -83,4 +83,13 @@ seer_control_package_staging(
     STAGE_TARGET terminalhere_manifest_stage
     PACKAGE_TARGET terminalhere_package
     STAGING_DIR ${TERMINAL_PACKAGE_STAGING_DIR}
+    PACKAGE_ZIP_NAME "terminal-here-1.1.0.zip"
 )
+
+# A detached helper shows its own failure dialog. Tests inherit this switch
+# so refusals stay observable on stderr instead of blocking on a modal window.
+get_property(_seer_control_tests DIRECTORY PROPERTY TESTS)
+if(_seer_control_tests)
+    set_tests_properties(${_seer_control_tests} PROPERTIES
+        ENVIRONMENT "SEER_TEST_NO_UI=1")
+endif()

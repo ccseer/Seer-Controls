@@ -28,10 +28,10 @@ int main(int argc, char *argv[])
           "manifest name is Explorer Properties");
     check(package.command == "shellverb_properties.exe",
           "command is the fixed Properties helper");
-    check(package.version == "1.1.0",
+    check(package.version == "1.2.0",
           "the release version matches the packaged archive name");
-    check(package.appMinVersion == "4.5.10",
-          "the declared minimum host version is unchanged");
+    check(package.appMinVersion == "4.8.0",
+          "the declared minimum host version is the detached host baseline");
     check(isExactStringArray(member(package.root, "extensions"),
                              "${type_file}"),
           "extensions contains the file type token");
@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
     // The launcher and the worker run concurrently, so the dialog wait below is
     // spent inside the launcher's readiness window rather than added to it. The
     // wait has to fit inside that window, or readiness can never arrive in time
-    // on a healthy worker, and the host's timeout has to outlast the launcher.
+    // on a healthy worker, and the recorded budget has to outlast the launcher.
     check(ShellUiWorker::kPreReadinessUiWaitMs
               <= ShellUiWorker::Options().readyTimeoutMs,
           "the dialog wait fits inside the readiness window the launcher "

@@ -19,6 +19,8 @@ namespace {
 struct Builder {
     const Request &request;
     std::wstring text;
+    // UTF-8 byte cost of one separator, resolved once instead of per entry.
+    size_t separatorBytes = 0;
     // The limit is a UTF-8 byte limit: it measures the text the way a file or a
     // pasted message would be measured, not the way Windows stores clipboard
     // text (CF_UNICODETEXT keeps UTF-16 units). Counting UTF-16 units would
@@ -37,8 +39,8 @@ void setTruncationNote(Builder *builder, const std::wstring &description)
     }
 }
 
-// Measures a line the way the clipboard hands it out: UTF-8 bytes, plus the
-// CRLF that follows it. A name with an unpaired surrogate (legal in NTFS)
+// Measures a line the way the clipboard hands it out: UTF-8 bytes, without the
+// separator that follows it. A name with an unpaired surrogate (legal in NTFS)
 // converts to one U+FFFD per bad unit, three bytes each, which is also the
 // worst case per unit - so a refusal is charged the same way instead of as
 // nothing, and no name can slip past the byte limit by failing to convert.
@@ -53,12 +55,12 @@ size_t lineUtf8Bytes(const std::wstring &line)
     constexpr size_t kMaxUtf8BytesPerUnit = 3;
     const size_t bytes = encoded > 0 ? static_cast<size_t>(encoded)
                                      : line.size() * kMaxUtf8BytesPerUnit;
-    return bytes + 2;  // CRLF
+    return bytes;
 }
 
 bool appendLine(Builder *builder, const std::wstring &line)
 {
-    const size_t lineBytes = lineUtf8Bytes(line);
+    const size_t lineBytes = lineUtf8Bytes(line) + builder->separatorBytes;
     if (builder->utf8Bytes + lineBytes > builder->request.maxBytes) {
         setTruncationNote(
             builder,
@@ -69,7 +71,7 @@ bool appendLine(Builder *builder, const std::wstring &line)
     }
     builder->utf8Bytes += lineBytes;
     builder->text += line;
-    builder->text += L"\r\n";
+    builder->text += builder->request.separator;
     return true;
 }
 
@@ -201,6 +203,79 @@ bool matchesPattern(const std::wstring &name, const std::wstring &pattern)
     return patternIndex == pattern.size();
 }
 
+bool parseSeparator(const std::wstring &value, std::wstring *separator,
+                    std::wstring *error)
+{
+    // Named forms keep the manifest readable: the host passes arguments as JSON
+    // strings, so a user who wants a tab would otherwise have to double the
+    // backslash to reach this parser as an escape sequence.
+    struct Named {
+        const wchar_t *name;
+        const wchar_t *text;
+    };
+    static constexpr Named kNamed[] = {
+        {L"crlf", L"\r\n"},   {L"lf", L"\n"},   {L"cr", L"\r"},
+        {L"tab", L"\t"},      {L"space", L" "}, {L"comma", L","},
+        {L"semicolon", L";"}, {L"pipe", L"|"},  {L"none", L""},
+    };
+    for (const auto &named : kNamed) {
+        if (WinText::equalsIgnoreCase(value, named.name)) {
+            if (separator) {
+                *separator = named.text;
+            }
+            return true;
+        }
+    }
+
+    std::wstring parsed;
+    for (size_t index = 0; index < value.size(); ++index) {
+        const wchar_t character = value[index];
+        if (character != L'\\') {
+            parsed += character;
+            continue;
+        }
+        if (index + 1 >= value.size()) {
+            if (error) {
+                *error = L"--separator ends with a lone backslash";
+            }
+            return false;
+        }
+        const wchar_t escaped = value[++index];
+        switch (escaped) {
+        case L'n':
+            parsed += L'\n';
+            break;
+        case L'r':
+            parsed += L'\r';
+            break;
+        case L't':
+            parsed += L'\t';
+            break;
+        case L'\\':
+            parsed += L'\\';
+            break;
+        default:
+            if (error) {
+                *error = std::wstring(L"--separator has no escape '\\")
+                         + escaped
+                         + L"'; use \\n, \\r, \\t, \\\\ or a named form";
+            }
+            return false;
+        }
+    }
+    if (parsed.size() > kMaxSeparatorChars) {
+        if (error) {
+            *error = L"--separator is longer than "
+                     + std::to_wstring(kMaxSeparatorChars) + L" characters";
+        }
+        return false;
+    }
+    if (separator) {
+        *separator = parsed;
+    }
+    return true;
+}
+
 std::optional<Request> parseArguments(const std::vector<std::wstring> &arguments,
                                       std::wstring *error)
 {
@@ -217,7 +292,7 @@ std::optional<Request> parseArguments(const std::vector<std::wstring> &arguments
     }
     const auto scan = WinCmd::scanOptions(
         arguments, 1, {L"include-hidden"},
-        {L"input", L"exclude", L"max-entries", L"max-bytes"});
+        {L"input", L"exclude", L"max-entries", L"max-bytes", L"separator"});
     if (!scan.ok) {
         return fail(scan.error);
     }
@@ -274,6 +349,12 @@ std::optional<Request> parseArguments(const std::vector<std::wstring> &arguments
         return fail(problem);
     }
 
+    std::wstring rawSeparator;
+    if (WinCmd::optionValue(scan, L"separator", &rawSeparator)
+        && !parseSeparator(rawSeparator, &request.separator, &problem)) {
+        return fail(problem);
+    }
+
     request.includeHidden = WinCmd::hasOption(scan, L"include-hidden");
     for (const auto &pattern : WinCmd::optionValues(scan, L"exclude")) {
         const auto trimmed = WinText::trim(pattern);
@@ -317,6 +398,7 @@ ListingResult buildListing(const Request &request)
     sortEntries(&entries);
 
     Builder builder{request};
+    builder.separatorBytes = lineUtf8Bytes(request.separator);
     renderEntries(&builder, entries);
 
     if (builder.truncated) {
@@ -325,10 +407,10 @@ ListingResult buildListing(const Request &request)
         // The note is small and must always be visible, so it bypasses the byte
         // limit on purpose.
         builder.text += note;
-        builder.text += L"\r\n";
+        builder.text += request.separator;
         // The note bypasses the limit but is still part of what the user gets,
         // so the reported size accounts for it.
-        builder.utf8Bytes += lineUtf8Bytes(note);
+        builder.utf8Bytes += lineUtf8Bytes(note) + builder.separatorBytes;
     }
 
     // A non-empty folder that renders nothing means every entry was skipped as
@@ -397,8 +479,8 @@ ListingResult run(const std::vector<std::wstring> &arguments)
     if (!request) {
         outcome.exitCode = WinExit::kUsage;
         outcome.message  = error;
-        // The host surfaces the captured stderr of a failed Control action in
-        // a toast, so the reason is written there instead of a window.
+        // The host does not read a Control helper's stderr, so the reason has to
+        // reach the user from this process; writeStandardError raises the dialog.
         WinText::writeStandardError(outcome.message);
         return outcome;
     }
@@ -409,8 +491,8 @@ ListingResult run(const std::vector<std::wstring> &arguments)
         return result;
     }
 
-    // Success is reported through the exit code alone: the host toasts the
-    // outcome, and this helper opens no window of its own.
+    // Success is silent: the host reports nothing after a successful launch, and
+    // this helper opens no window of its own.
     return result;
 }
 

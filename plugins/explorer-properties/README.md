@@ -1,5 +1,22 @@
 # Explorer Properties
 
+## Host execution model
+
+Seer starts Control helpers with `QProcess::startDetached`. A launch counts as
+successful as soon as the operating system accepts it; the host does not wait
+for the process, does not read its exit code, does not capture stdout or stderr,
+applies no `timeout_ms`, and never kills the helper's process tree. Success is
+silent: only a launch-time failure produces a host toast.
+
+This helper therefore presents every failure it raises in its own system-owned
+message box. The stderr write is kept as a test-observable diagnostic channel;
+CTest sets `SEER_TEST_NO_UI=1` so refusals stay on stderr instead of opening a
+modal dialog. `timeout_ms` and `success_exit_codes` remain in the manifest for
+schema completeness and the manifest test, and `appMinVersion` is `4.8.0`, the
+first host with this execution model. `close_after_success` is `false` so the
+preview window stays open after the launch.
+
+
 This independently downloadable Seer Canonical v1 Control package opens the
 Windows Properties dialog for the current regular file. The helper always uses
 the fixed non-destructive `properties` Shell verb.
@@ -24,13 +41,17 @@ ctest --preset default
 Without the machine-local preset file, configure with an explicit
 out-of-repo `-B` directory instead.
 
-Install the distributable files into one package root, then create the release
-archive from that root only:
+The package target runs the manifest contract test first, then writes the
+release archive from a staged root that holds nothing else:
 
 ```powershell
-cmake --install "<your-build-dir>" --prefix dist
-Compress-Archive -Path dist/* -DestinationPath explorer-properties-1.1.0.zip
+cmake --build --preset default --target shellverb_package
 ```
+
+The result is `dist/explorer-properties-1.2.0.zip`, whose root holds
+`plugin.json`, the helper and `README.md`. `cmake --install "<your-build-dir>"
+--prefix dist` still produces the same tree when an installed layout is what you
+need.
 
 The install step validates that the manifest and helper are present under the
 same package root and that the fixed Properties contract is intact; it fails if
@@ -49,20 +70,20 @@ the following acceptance cases in a fresh Seer profile:
 - Uninstalling the package removes the control.
 - Reinstalling the package restores the control.
 
-The launcher returns success when a visible window appears in the process
-returned by the Shell, or when the synchronous Shell call succeeds without
-returning a process handle and leaves no window in the helper. In the latter
-case the Shell owns the UI and its handoff is the only available confirmation;
-the helper cannot verify that an externally owned dialog actually appeared.
-When the dialog is hosted inside the helper, the worker pumps messages until
-it closes, so Seer's command timeout does not limit user interaction.
+The launcher returns success only when a visible window exists in the process
+named by the Shell, or in the helper itself when the Shell creates the sheet
+there without returning a process handle. The window is the signal in both
+cases: a Shell call that is accepted but produces no window within three
+seconds is reported as a failure, never as a silent success. When the dialog is
+hosted inside the helper, the worker pumps messages until it closes. The host applies no command timeout to a detached Control action, so
+the dialog can stay open as long as the user needs.
 
-Seer renders the launcher's stderr only, and that helper process is spawned
-detached without handle inheritance, so a refusal it raises cannot be written
-straight to the host. The launcher creates a named reason channel before the
-helper starts; the helper publishes its message there and the launcher re-emits
-it on its own stderr, which is what lets a shell refusal or a dialog that never
-appeared reach the user as text instead of a bare exit code.
+The launcher owns the failure presentation. It creates a named reason channel
+before the helper starts; the helper publishes its message there and the
+launcher shows it in a system-owned message box. The launcher also writes the
+reason to stderr so CTest can observe it under `SEER_TEST_NO_UI=1`. A shell
+refusal or a dialog that never appeared therefore reaches the user as text
+instead of a bare exit code.
 
 Also verify that a file type whose Properties handler runs in an existing
 Shell process does not report a three-second failure while its dialog is open.

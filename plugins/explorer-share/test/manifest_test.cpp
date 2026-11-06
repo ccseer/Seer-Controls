@@ -37,10 +37,10 @@ int main(int argc, char *argv[])
           "manifest selects io.1218.seer.explorer-share");
     check(package.name == "Share", "manifest name is Share");
     check(package.command == "seer_share.exe", "command is seer_share.exe");
-    check(package.version == "1.1.0",
+    check(package.version == "1.2.0",
           "the release version matches the packaged archive name");
-    check(package.appMinVersion == "4.5.10",
-          "the declared minimum host version is unchanged");
+    check(package.appMinVersion == "4.8.0",
+          "the declared minimum host version is the detached host baseline");
     check(isExactStringArray(member(package.root, "extensions"),
                              "${type_file}"),
           "extensions contains the file type token ${type_file}");
@@ -52,8 +52,8 @@ int main(int argc, char *argv[])
     // is spent inside the launcher's readiness window rather than added to it.
     // Two things have to hold: the wait has to fit inside that window, or
     // readiness can never arrive in time and a healthy handoff fails; and the
-    // host's timeout has to outlast the launcher, which is the only process it
-    // bounds.
+    // budget recorded in the manifest has to outlast the launcher, so the record
+    // describes the real bound.
     const auto options = handoffOptions();
     check(kSharePayloadWaitMs <= options.readyTimeoutMs,
           "the payload wait fits inside the readiness window the launcher "

@@ -17,6 +17,11 @@
 #       PACKAGE_TARGET terminalhere_package
 #       STAGING_DIR ${TERMINAL_PACKAGE_STAGING_DIR})
 #
+# PACKAGE_ZIP_NAME is optional. When it is set, the package target also writes a
+# flat ZIP of the staged tree to PACKAGE_ZIP_DIR (default: the package's dist
+# directory). Packages that stage extra content keep their own packaging step
+# and leave this unset.
+#
 # EXTENSION_TOKEN declares the package's single matcher token. A multi-type
 # package passes EXTENSION_TOKENS with one token per type instead
 # (EXTENSION_TOKENS "\${type_pdf}" "\${type_image}"); the install-time
@@ -40,6 +45,8 @@ function(seer_control_package_staging)
         STAGE_TARGET
         PACKAGE_TARGET
         STAGING_DIR
+        PACKAGE_ZIP_NAME
+        PACKAGE_ZIP_DIR
     )
     set(multiValueArgs
         EXTENSION_TOKENS
@@ -102,11 +109,35 @@ function(seer_control_package_staging)
     add_test(NAME ${PKG_TEST_TARGET}
         COMMAND ${PKG_TEST_TARGET} ${PKG_STAGING_DIR}
     )
-    add_custom_target(${PKG_PACKAGE_TARGET}
-        COMMAND $<TARGET_FILE:${PKG_TEST_TARGET}> ${PKG_STAGING_DIR}
-        DEPENDS ${PKG_TEST_TARGET}
-        VERBATIM
-    )
+    # Only packages whose staged tree is exactly the three contract files use the
+    # shared ZIP step; one that stages extra content (syntax definitions, models,
+    # a runtime) owns its own archive layout instead. Relative entry names keep
+    # the archive root flat: an absolute source path would be stored with its
+    # directory structure, and the host rejects an archive whose package root is
+    # ambiguous.
+    if(PKG_PACKAGE_ZIP_NAME)
+        if(NOT PKG_PACKAGE_ZIP_DIR)
+            set(PKG_PACKAGE_ZIP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist")
+        endif()
+        set(_zip_path "${PKG_PACKAGE_ZIP_DIR}/${PKG_PACKAGE_ZIP_NAME}")
+        # The manifest test runs first, so a contract violation never produces an
+        # archive that looks publishable.
+        add_custom_target(${PKG_PACKAGE_TARGET}
+            COMMAND $<TARGET_FILE:${PKG_TEST_TARGET}> ${PKG_STAGING_DIR}
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${PKG_PACKAGE_ZIP_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E tar cf "${_zip_path}" --format=zip --
+                    plugin.json ${PKG_COMMAND_NAME} README.md
+            WORKING_DIRECTORY ${PKG_STAGING_DIR}
+            DEPENDS ${PKG_TEST_TARGET}
+            VERBATIM
+        )
+    else()
+        add_custom_target(${PKG_PACKAGE_TARGET}
+            COMMAND $<TARGET_FILE:${PKG_TEST_TARGET}> ${PKG_STAGING_DIR}
+            DEPENDS ${PKG_TEST_TARGET}
+            VERBATIM
+        )
+    endif()
 
     install(TARGETS ${PKG_COMMAND_TARGET} RUNTIME DESTINATION .)
     install(FILES plugin.json DESTINATION .)

@@ -26,10 +26,10 @@ int main(int argc, char *argv[])
     check(package.name == "Open With", "manifest name is Open With");
     check(package.command == "shellopenwith.exe",
           "command is shellopenwith.exe");
-    check(package.version == "1.1.0",
+    check(package.version == "1.2.0",
           "the release version matches the packaged archive name");
-    check(package.appMinVersion == "4.5.10",
-          "the declared minimum host version is unchanged");
+    check(package.appMinVersion == "4.8.0",
+          "the declared minimum host version is the detached host baseline");
     check(isExactStringArray(member(package.root, "extensions"),
                              "${type_file}"),
           "extensions contains the file type token");
@@ -38,7 +38,8 @@ int main(int argc, char *argv[])
     check(package.arguments == expectedArguments,
           "arguments pass the file and the separator token separately");
     // The Open With dialog is modal and owns this process for as long as it is
-    // open, so the host timeout bounds how long the user may take to choose.
+    // open, so the budget the manifest records has to leave room for a user to
+    // choose.
     check(package.timeoutMs >= 30000,
           "the timeout budget leaves room for a modal dialog");
     check(package.timeoutMs <= 600000,

@@ -1,6 +1,6 @@
 # Who Is Locking This File? Control
 
-**Who Is Locking This File? Control** is an official Canonical v1 Control plugin for [Seer](https://1218.io/), the file preview tool for Windows. It inspects and displays which applications, background services, or system processes are currently holding or locking the selected file.
+Inspects and displays which applications, background services, or system processes are currently holding or locking the selected file.
 
 ## Options & Arguments
 

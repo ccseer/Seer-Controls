@@ -20,19 +20,23 @@ Control plugins add custom action buttons to the **left section of the bottom Co
 
 1. **Trigger**: When a file or folder is previewed, Seer matches its extension/type against installed control plugins. Matching plugins appear as buttons on the Control Bar.
 2. **User Action**: The user clicks the control button.
-3. **Launch**: Seer executes the configured helper program or script via `QProcess::start`, passing parameters expanded from placeholders (e.g. `${input_file}`).
+3. **Launch**: Seer resolves the package-relative command, expands the placeholders, and starts the helper with `QProcess::startDetached`. The call returns immediately and the host keeps no process handle.
 4. **Execution & UI**:
    - The helper performs its task (e.g. launches a terminal, copies file info to the clipboard, opens a Windows system dialog, or executes a background script).
    - The helper does **not** draw its own persistent main window.
 5. **Completion & Error Reporting**:
-   - **Success**: The process exits with code `0` (or any code in `success_exit_codes`). If `"close_after_success": true` is set, Seer automatically closes the preview window.
-   - **Failure**: The process exits with a non-zero code. Anything written to standard error (`stderr`) is captured by Seer and displayed to the user as an in-app failure Toast notification.
+   - **Success**: The operating system accepted the launch. This is the only outcome the host observes. It stays silent: no success toast, no exit-code check, no stdout or stderr capture, no timeout, and no cancellation of the helper's process tree. The helper may therefore keep running after the preview window is hidden or after Seer exits.
+   - **Failure**: Only a launch-time failure is reported to the user: an empty or unresolvable command, a start refused by the operating system, a rejected argument, or a `${screenshot}` capture that could not be prepared. Seer shows the reason in an in-app toast and shakes the preview window, which stays open. Anything the helper writes to stderr after it has started is not seen by Seer.
+   - **Close after success**: If `close_after_success` is true, Seer hides the preview window as soon as the launch succeeds, but only while the originating preview container is still visible and the previewed path has not changed.
 
 > [!IMPORTANT]
 > **Script Execution and Runtimes:**
 > - Seer automatically adapts `.ps1` files to run via PowerShell (`powershell.exe -NoProfile -ExecutionPolicy Bypass -File <script>`).
-> - For other scripts (`.py`, `.js`, `.bat`), Seer launches the entry directly via `QProcess::start(exe, args)` without wrapping an interpreter.
+> - For other scripts (`.py`, `.js`, `.bat`), Seer launches the entry directly via `QProcess::startDetached(exe, args)` without wrapping an interpreter.
 > - Deliver a standalone `.exe` (e.g. compiled C++, Rust, Go, or Python via PyInstaller) or configure `powershell.exe` / native Windows executables.
+
+> [!IMPORTANT]
+> **Helpers own their own failure UI.** Because the host stops observing a Control helper once the launch succeeds, a helper that starts and then fails (a missing runtime, a denied operation, an empty result) must present that failure itself, for example in a system-owned message box. Writing to stderr is useful for diagnostics but reaches no Seer UI. In a Control manifest, `timeout_ms` and `success_exit_codes` are accepted but ignored; they still apply to Preview and Property process plugins.
 
 ---
 
@@ -47,9 +51,13 @@ Control plugins add custom action buttons to the **left section of the bottom Co
 | `${seer_dir}` | Directory containing `Seer.exe`. | `C:\Program Files\Seer` |
 | `${seer_exe}` | Absolute path to `Seer.exe`. | `C:\Program Files\Seer\Seer.exe` |
 | `${7z}` | Absolute path to `7z.exe` bundled with Seer. | `C:\Program Files\Seer\plugins\7z.exe` |
+| `${screenshot}` | Absolute path of a temporary PNG captured from the current view. Captured only when an argument actually uses this token; a failed or blocked capture prevents the launch and shows a toast. | `C:\...\screenshot\capture.png` |
+| `${seerviewer_exe}` | Absolute path to `SeerViewer.exe`, for controls that present results in a standalone viewer window. | `C:\Program Files\Seer\SeerViewer.exe` |
+| `${theme}` | Current Seer theme. | `dark` or `light` |
+| `${lang}` | Current UI language as a BCP-47 tag. | `zh-CN` |
 
 > [!WARNING]
-> A control helper receives the target path only. `${output_dir}`, `${output_file}`, and `${no_cache}` are **rejected** in a control manifest. A control that needs a scratch location must resolve one itself: its own executable directory first, then `<temp>\SeerControlPlugins\<packageName>`.
+> A control helper receives the target path only. `${output_dir}`, `${output_file}`, and `${no_cache}` are **rejected** in a control manifest (the loader rejects them at import time), and `${use_backslash}` must be a standalone argument because it is removed before launch. A control that needs a scratch location must resolve one itself: its own executable directory first, then `<temp>\SeerControlPlugins\<packageName>`.
 
 ### File Matcher Tokens in `extensions`
 
@@ -88,9 +96,9 @@ Every Seer control plugin must place a strictly valid `plugin.json` in its root 
 | `extensions` | Array | **Required** | Supported extensions or matcher tokens (e.g. `["${type_folder}"]`, `["png", "jpg"]`). |
 | `command` | String | **Required** | Executable or script filename relative to the package root. |
 | `arguments` | Array | **Required** | Array of CLI arguments (e.g. `["--input", "${input_file}"]`). |
-| `close_after_success` | Boolean | Optional | If `true`, closes preview window on successful run (default: `false`). |
-| `timeout_ms` | Integer | Optional | Process timeout in milliseconds (e.g. `30000`). |
-| `success_exit_codes` | Array | Optional | List of exit codes indicating success (default: `[0]`). |
+| `close_after_success` | Boolean | Optional | If `true`, hides the preview window as soon as the detached launch succeeds. **Default: `true`**. Only valid for the Control capability; the window stays open when the originating preview is no longer visible or the previewed path has changed. |
+| `timeout_ms` | Integer | Optional | Ignored for Control. Still used by Preview/Property process invocations (e.g. `30000`). |
+| `success_exit_codes` | Array | Optional | Ignored for Control: the host never observes a Control helper's exit code. Still used by Preview/Property process invocations (default: `[0]`). |
 
 > [!NOTE]
 > Control plugins can also declare execution settings under `"invocations": { "control": { "command": "...", "arguments": [...] } }`. Both forms are fully supported.
@@ -120,11 +128,7 @@ Every Seer control plugin must place a strictly valid `plugin.json` in its root 
     "--input",
     "${input_file}"
   ],
-  "close_after_success": false,
-  "timeout_ms": 150000,
-  "success_exit_codes": [
-    0
-  ]
+  "close_after_success": false
 }
 ```
 
@@ -149,16 +153,12 @@ Every Seer control plugin must place a strictly valid `plugin.json` in its root 
     "--input",
     "${input_file}",
     "${use_backslash}"
-  ],
-  "timeout_ms": 30000,
-  "success_exit_codes": [
-    0
   ]
 }
 ```
 
 > [!TIP]
-> To automatically close the preview window upon success, set `"close_after_success": true` in the manifest.
+> The host default is `true`: a successful launch hides the preview window. Set `"close_after_success": false` to keep it open, which is what most helpers that show a dialog or write a result next to the file need.
 
 ---
 
@@ -173,8 +173,8 @@ When building a Control Plugin from a user requirement:
 
 2. **Implement the Helper**:
    - Write clean, standalone code (C++17 with static CRT, Win32 API, or standalone executable/script).
-   - Return exit code `0` on success.
-   - If an error occurs, write a helpful error message to `stderr` and exit with a non-zero code.
+   - Return exit code `0` on success and a non-zero code on failure, and write a helpful message to `stderr`. These serve the helper's own tests and diagnostics: the host does not read either for a Control action.
+   - Present any failure the user must see from inside the helper (for example a system-owned message box). The host reports launch failures only; a helper that starts and then fails is otherwise invisible to Seer.
    - Avoid creating persistent custom GUI windows unless handing off to a native system dialog.
 
 3. **Provide `PACKAGE_README.md`**:
@@ -194,11 +194,11 @@ When building a Control Plugin from a user requirement:
      ```powershell
      # Executable helpers:
      .\my_control.exe --input "C:\Path\To\TestFile.ext"
-     $LASTEXITCODE  # Must be 0
+     $LASTEXITCODE  # Must be 0 (helper contract; Seer does not read it for Control actions)
 
      # PowerShell script helpers:
      powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\my_control.ps1 --input "C:\Path\To\TestFile.ext"
-     $LASTEXITCODE  # Must be 0
+     $LASTEXITCODE  # Must be 0 (helper contract; Seer does not read it for Control actions)
      ```
 
 6. **Package into Flat ZIP**:

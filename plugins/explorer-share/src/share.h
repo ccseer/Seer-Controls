@@ -25,8 +25,8 @@ public:
 };
 
 // Mirrors shellverb's ErrorReport: the showing half runs in the detached UI
-// worker, so a reason it raises reaches the host only when the launcher
-// re-emits it. The shared alias keeps the two handoff callers in step.
+// worker, so a reason it raises reaches the user only when the launcher presents
+// it. The shared alias keeps the two handoff callers in step.
 using ErrorReport = ShellUiWorker::ErrorReport;
 
 // The worker waits this long for WinRT to hand over the share payload, and it
@@ -41,21 +41,21 @@ inline constexpr DWORD kSharePayloadWaitMs = 30000;
 inline constexpr DWORD kShareStartupMarginMs = 5000;
 
 // The handoff this package actually runs with. Both main.cpp and the manifest
-// test read it, so the timeout the host enforces and the wait the worker
+// test read it, so the budget recorded in the manifest and the wait the worker
 // performs are checked against the same numbers instead of drifting apart.
 inline ShellUiWorker::Options handoffOptions()
 {
     return ShellUiWorker::Options{kSharePayloadWaitMs + kShareStartupMarginMs};
 }
 
-// Human-readable text for a failure the host would otherwise render as a bare
-// exit code because this process has no stderr the host can read.
+// Human-readable text for a failure, worded so the helper's error dialog can
+// show it verbatim instead of a bare exit code.
 std::wstring describeFailure(HRESULT result);
 
-// A refusal comes back as text for the host to render rather than being written
-// here, because the caller knows which channel carries it: the launcher writes
-// its stderr, the worker can only reach the user through the launcher's reason
-// channel. Worded for the user, since the host renders it verbatim.
+// A refusal comes back as text for the caller to present rather than being
+// reported here, because the caller knows which channel carries it: the launcher
+// owns the error dialog, the worker can only reach it through the launcher's
+// reason channel. Worded for the user, because it is shown verbatim.
 ParsedInput parseArguments(const std::vector<std::wstring>& arguments,
                            std::wstring* error = nullptr);
 int run(const std::vector<std::wstring>& arguments, ISharePlatform& platform,

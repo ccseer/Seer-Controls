@@ -1,8 +1,9 @@
-// The worker is spawned detached with no handle inheritance, so the host can
-// only ever read the LAUNCHER's stderr. These checks prove the reason channel the
-// handoff depends on: the launcher owns a buffer the worker can write into, the
-// launcher reads back exactly what was published and bounded, and a refusal is
-// explained on whichever channel the half that raised it can reach.
+// The worker is spawned detached with no handle inheritance, so nothing it
+// writes reaches the host; the LAUNCHER owns the error dialog. These checks
+// prove the reason channel the handoff depends on: the launcher owns a buffer
+// the worker can write into, the launcher reads back exactly what was published
+// and bounded, and a refusal is explained on whichever channel the half that
+// raised it can reach.
 //
 // usage: shelluiworker_test
 
@@ -31,6 +32,11 @@ std::optional<std::wstring> refuseWith(const wchar_t *reason)
 
 int main()
 {
+    // The launcher presents a refusal in a message box, so the switch has to be
+    // set here as well: CTest sets it through the environment, but a developer
+    // running this executable by hand must not hit a modal dialog either.
+    SetEnvironmentVariableW(L"SEER_TEST_NO_UI", L"1");
+
     const std::wstring eventName = L"Local\\SeerPluginUi-reason-test";
 
     // Without an owner-created channel the worker has nowhere to write, which is
@@ -63,7 +69,7 @@ int main()
           "the truncated reason keeps its leading text");
 
     // An empty message must leave the channel empty, so the launcher does not
-    // emit a blank line the host would render as an empty toast.
+    // present an empty reason.
     check(ShellUiWorker::publishReason(eventName, std::wstring()),
           "an empty reason publishes successfully");
     check(ShellUiWorker::readReason(channel).empty(),
@@ -71,7 +77,7 @@ int main()
 
     // A refusal raised by the worker's own validation has to reach the launcher's
     // channel: this process is detached with no inherited stderr, so that buffer
-    // is the only thing the host can read back. The launcher's half of the
+    // is the only way the reason reaches the launcher. The launcher's half of the
     // handoff is stood up here, because the worker refuses to run without it.
     {
         const std::wstring workerEvent = L"Local\\SeerPluginUi-worker-test";
@@ -101,10 +107,10 @@ int main()
         capture.drain();
     }
 
-    // The launcher runs where the host reads stderr directly and has no reason
-    // channel yet, so that is where its refusal belongs. Handing the reason back
-    // to the caller, rather than letting the validator report it, is what keeps
-    // it from being dropped on one side or the other.
+    // The launcher has no reason channel yet, so it presents its refusal in the
+    // helper's own error dialog and mirrors it to stderr, which CTest reads.
+    // Handing the reason back to the caller, rather than letting the validator
+    // report it, is what keeps it from being dropped on one side or the other.
     {
         StderrHarness::Capture capture;
         const int refused = ShellUiWorker::run(
@@ -119,7 +125,7 @@ int main()
         const auto written = capture.drain();
         check(written.find("the launcher refused the request")
                   != std::string::npos,
-              "the launcher explains its refusal on the stderr the host reads");
+              "the launcher explains its refusal on its own stderr and dialog");
     }
 
     return TestHarness::summarize("shelluiworker_test");

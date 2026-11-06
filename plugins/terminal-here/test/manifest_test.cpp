@@ -25,9 +25,9 @@ int main(int argc, char *argv[])
     check(package.name == "Terminal Here", "manifest name is Terminal Here");
     check(package.command == "terminal_here.exe",
           "command is the fixed Terminal Here helper");
-    check(package.version == "1.0.0", "the package version is fixed");
-    check(package.appMinVersion == "4.5.10",
-          "the declared minimum host version is unchanged");
+    check(package.version == "1.1.0", "the package version is fixed");
+    check(package.appMinVersion == "4.8.0",
+          "the declared minimum host version is the detached host baseline");
     check(isExactStringArray(member(package.root, "extensions"),
                              "${type_folder}"),
           "extensions contains the folder type token");

@@ -45,9 +45,9 @@ std::optional<ParsedInput> parseArguments(const std::vector<std::wstring> &argv)
 std::optional<ParsedInput> parseArguments(const std::vector<std::wstring> &argv,
                                           std::wstring *error)
 {
-    // The reported text is what the host renders for a refused action, so it
-    // says what went wrong in the user's terms rather than naming a parameter.
-    // The caller only has to decide which channel carries it.
+    // The reported text is what the user sees for a refused action, so it says
+    // what went wrong in the user's terms rather than naming a parameter. The
+    // caller only has to decide which channel carries it.
     const auto fail
         = [error](const wchar_t *message) -> std::optional<ParsedInput> {
         if (error)
@@ -76,12 +76,12 @@ int invokeProperties(const std::wstring &inputPath,
                      const ErrorReport &report,
                      const ShellExecutor &execute)
 {
-    // The host reads the launcher's stderr, so a reason raised here only reaches
-    // it when it goes through the report channel. The fallback covers the runs
+    // A reason raised here only reaches the user when it goes through the report
+    // channel: the worker's own output goes nowhere. The fallback covers the runs
     // that have no channel at all -- the public default entry points, and any
-    // caller that only has this half -- where writing stderr is still the one
-    // thing the host can read, and returning a failure code with no reason is
-    // the failure mode this whole path exists to avoid.
+    // caller that only has this half -- where the helper's own error dialog is
+    // still available, and returning a failure code with no reason is the
+    // failure mode this whole path exists to avoid.
     const auto announce = [&](const std::wstring &message) {
         if (report) {
             report(message);
@@ -110,13 +110,13 @@ int invokeProperties(const std::wstring &inputPath,
                                          : GetCurrentProcessId();
     if (processHandle)
         CloseHandle(processHandle);
-    // An existing Shell process may handle the verb without returning a process
-    // handle. NOASYNC completes that handoff; only local windows need our pump.
-    if (!processHandle && !hasVisibleWindowForProcess(processId)) {
-        if (onReady)
-            onReady();
-        return 0;
-    }
+    // The properties verb can create the sheet inside this process and still
+    // leave hProcess null. Treating that as "handled by another Shell process"
+    // reported readiness before the window existed, and the worker exited and
+    // tore the half-built sheet down with it, so the user saw nothing at all.
+    // The visible window is therefore the only success signal, whether or not a
+    // process handle came back; a verb that really is handled elsewhere has to
+    // be confirmed by that window too.
     const auto hasWindow = [processId] {
         return hasVisibleWindowForProcess(processId);
     };
@@ -126,9 +126,9 @@ int invokeProperties(const std::wstring &inputPath,
     const auto deadline = GetTickCount64() + ShellUiWorker::kPreReadinessUiWaitMs;
     while (!hasWindow()) {
         if (GetTickCount64() >= deadline) {
-            // The host renders a failed Control action's stderr and nothing
-            // else, so an exit code alone would be a failure the user has no
-            // way to interpret; announce picks the channel that reaches it.
+            // An exit code alone would be a failure the user has no way to
+            // interpret, because the host reports nothing after the launch
+            // succeeded; announce picks the channel that reaches the user.
             announce(
                 L"Properties did not open: no dialog window appeared for this "
                 L"file. Another program may own the Properties dialog for it; "
@@ -152,8 +152,8 @@ int run(const std::vector<std::wstring> &argv, const PropertiesInvoker &invoker)
     std::wstring error;
     const auto parsed = parseArguments(argv, &error);
     if (!parsed) {
-        // The host shows a failed Control action's stderr, so the reason has to
-        // be written there; an exit code alone would be an unexplained failure.
+        // The helper shows its own failure dialog, so the reason still has to
+        // reach stderr for tests; an exit code alone would be unexplained.
         // parseArguments already worded the reason for the user.
         WinText::writeStandardError(error);
         return kArgumentErrorExitCode;

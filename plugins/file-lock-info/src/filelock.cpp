@@ -323,12 +323,19 @@ std::wstring formatReportText(const LockReport &report)
         return text;
     }
 
+    bool unreadablePath = false;
+
     if (report.users.empty()) {
-        text += L"No users reported by Restart Manager.\r\n";
+        // Only shown when there is nothing to list. A user who cannot delete a
+        // file needs a reason to trust an empty result, and this is the one
+        // place where the caveat is actionable instead of noise.
+        text += L"No application reported.\r\n";
+        text += L"A driver, a protected process or another user session may "
+                L"still be using this file.\r\n";
     }
     else {
         text += std::to_wstring(static_cast<long long>(report.users.size()))
-                + L" user(s) reported by Restart Manager:\r\n\r\n";
+                + L" application(s) using this file:\r\n\r\n";
         const size_t displayCount
             = (std::min)(report.users.size(), kMaxDisplayUsers);
         for (size_t index = 0; index < displayCount; ++index) {
@@ -338,16 +345,16 @@ std::wstring formatReportText(const LockReport &report)
             text += L"   Name: " + user.name + L"\r\n";
             text += L"   PID:  " + std::to_wstring(user.pid) + L"\r\n";
             if (user.identityChanged) {
-                text += L"   Executable: not shown - the process identifier no "
-                        L"longer matches the process the Restart Manager saw. "
-                        L"Refresh to query again.\r\n";
+                text += L"   Executable: not shown - the process identifier "
+                        L"changed while the list was read. Run the control "
+                        L"again.\r\n";
             }
             else if (user.executableAccessible && !user.executablePath.empty()) {
                 text += L"   Executable: " + user.executablePath + L"\r\n";
             }
             else {
-                text += L"   Executable: not accessible at this privilege "
-                        L"level\r\n";
+                unreadablePath = true;
+                text += L"   Executable: not accessible\r\n";
             }
             if (user.startTimeKnown) {
                 text += L"   Started: " + stampOf(user.startTime) + L"\r\n";
@@ -359,7 +366,7 @@ std::wstring formatReportText(const LockReport &report)
             const size_t remaining = report.users.size() - displayCount;
             text += L"... and "
                     + std::to_wstring(static_cast<long long>(remaining))
-                    + L" more user(s) holding this file ("
+                    + L" more application(s) using this file ("
                     + std::to_wstring(static_cast<long long>(displayCount))
                     + L" of "
                     + std::to_wstring(static_cast<long long>(report.users.size()))
@@ -370,19 +377,14 @@ std::wstring formatReportText(const LockReport &report)
     if (report.truncated) {
         text += L"Only the first "
                 + std::to_wstring(static_cast<long long>(kMaximumEntries))
-                + L" users are listed; the Restart Manager reported more.\r\n\r\n";
+                + L" applications are listed.\r\n\r\n";
     }
 
-    text += L"Restart Manager reports the applications and services that "
-            L"registered an interest in this file. It is not a complete list of "
-            L"every lock: a kernel, protected, remote or otherwise unsupported "
-            L"lock is not reported, and neither is a lock held by another user "
-            L"session.\r\n\r\n";
-    if (!report.elevated) {
-        text += L"Some process names and paths are only readable with "
-                L"administrator rights. Run the control again with the "
-                L"--admin argument to query again; consent is requested "
-                L"explicitly.\r\n";
+    if (unreadablePath) {
+        text += report.elevated
+                    ? L"Some details are not readable even with administrator "
+                      L"rights.\r\n"
+                    : L"Some details need administrator rights.\r\n";
     }
     return text;
 }
@@ -392,8 +394,8 @@ int run(const std::vector<std::wstring> &arguments, const LockQuery &query)
     std::wstring error;
     const auto request = parseArguments(arguments, &error);
     if (!request) {
-        // The host surfaces the captured stderr of a failed Control action in
-        // a toast, so the reason is written there; this helper opens no window.
+        // The host does not read a Control helper's stderr, so the failure has to
+        // reach the user from this process; writeStandardError raises the dialog.
         WinText::writeStandardError(error);
         return WinExit::kUsage;
     }
@@ -433,9 +435,9 @@ int run(const std::vector<std::wstring> &arguments, const LockQuery &query)
 
     const auto report = query(request->filePath);
     if (!report.ok) {
-        // A failed query is not a report: presenting it in a success dialog
-        // would read like a result, so it goes to the host's failure channel
-        // instead and no dialog is opened.
+        // A failed query is not a report: presenting it in the result dialog
+        // would read like a result, so it goes to the helper's error dialog
+        // instead and the result dialog never opens.
         WinText::writeStandardError(report.message);
         return report.exitCode == WinExit::kOk ? WinExit::kFailure
                                                : report.exitCode;
@@ -443,8 +445,8 @@ int run(const std::vector<std::wstring> &arguments, const LockQuery &query)
 
     // The report is presented in a system-owned modal dialog: one MessageBoxW,
     // no window drawn by the plugin itself. The helper exits once the user
-    // dismisses it, so the whole presentation stays inside the manifest
-    // timeout, and nothing is copied to the clipboard.
+    // dismisses it, so nothing lingers in the background, and nothing is copied
+    // to the clipboard.
     MessageBoxW(nullptr, formatReportText(report).c_str(),
                 L"Who Is Locking This File",
                 MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);

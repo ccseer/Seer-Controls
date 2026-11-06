@@ -23,9 +23,9 @@ int main(int argc, char *argv[])
           "manifest selects the fixed Who Is Locking This File package");
     check(package.command == "file_lock_info.exe",
           "command is the fixed file-lock helper");
-    check(package.version == "1.0.0", "the package version is fixed");
-    check(package.appMinVersion == "4.5.10",
-          "the declared minimum host version is unchanged");
+    check(package.version == "1.1.0", "the package version is fixed");
+    check(package.appMinVersion == "4.8.0",
+          "the declared minimum host version is the detached host baseline");
     check(isExactStringArray(member(package.root, "extensions"),
                              "${type_file}"),
           "extensions contains the file type token, not the folder token");

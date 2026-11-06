@@ -61,7 +61,7 @@ int run(const std::vector<std::wstring> &arguments,
 int run(const std::vector<std::wstring> &arguments)
 {
     // Only this overload is reached from wWinMain, so it owns the one sink that
-    // writes to the process's real stderr.
+    // presents the refusal to the user and mirrors it to the real stderr.
     return run(arguments, invokeOpenWith,
                [](const std::wstring &message) {
                    WinText::writeStandardError(message);

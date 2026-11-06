@@ -1,5 +1,22 @@
 # Who Is Locking This File?
 
+## Host execution model
+
+Seer starts Control helpers with `QProcess::startDetached`. A launch counts as
+successful as soon as the operating system accepts it; the host does not wait
+for the process, does not read its exit code, does not capture stdout or stderr,
+applies no `timeout_ms`, and never kills the helper's process tree. Success is
+silent: only a launch-time failure produces a host toast.
+
+This helper therefore presents every failure it raises in its own system-owned
+message box. The stderr write is kept as a test-observable diagnostic channel;
+CTest sets `SEER_TEST_NO_UI=1` so refusals stay on stderr instead of opening a
+modal dialog. `timeout_ms` and `success_exit_codes` remain in the manifest for
+schema completeness and the manifest test, and `appMinVersion` is `4.8.0`, the
+first host with this execution model. `close_after_success` is `false` so the
+preview window stays open after the launch.
+
+
 This independently downloadable Seer Canonical v1 Control package shows which
 applications and services are currently using the selected file. It is a
 read-only inspection: nothing is shut down, restarted, or modified. The report
@@ -50,36 +67,39 @@ query.
 The report is built in memory in full and then shown with one system call
 (`MessageBoxW`, `MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND`), so the
 plugin draws no window of its own and copies nothing to the clipboard. The
-dialog is modal: the helper exits only once the user dismisses it, so the
-whole presentation is bounded by the manifest `timeout_ms` (120000). A query
-that failed is not a report: it opens no dialog, and its reason goes to the
-host's failure channel instead, so an error can never read like a result.
+dialog is modal: the helper exits only once the user dismisses it. The host
+applies no `timeout_ms` to a detached Control action, so the report can stay
+open as long as the user needs. A query that failed is not a report: it opens
+the helper's own error message box and also writes the reason to stderr for
+tests, so an error can never read like a result.
 
-## Wording and honesty of the result
+## Wording of the result
 
-An empty result reads exactly:
+An empty result reads:
 
 ```
-No users reported by Restart Manager.
+No application reported.
+A driver, a protected process or another user session may still be using this file.
 ```
 
-and every report carries the standing limitation:
+The second line appears only in that case. A populated report lists the
+applications and adds nothing else, because the caveat is only useful to
+somebody looking at an empty result.
 
-> Restart Manager reports the applications and services that registered an
-> interest in this file. It is not a complete list of every lock: a kernel,
-> protected, remote or otherwise unsupported lock is not reported, and neither
-> is a lock held by another user session.
-
-"No rows" is never presented as a guarantee that the file is unlocked.
+`Executable: not accessible` means the process could not be opened at the current
+privilege level. A report with at least one such line ends with `Some details need
+administrator rights.`; when the query already ran elevated it says those details
+are not readable even with administrator rights, instead of suggesting another
+elevation.
 
 ## Process identity
 
-The Restart Manager reports each holder's identifier together with the process
-start time it observed. Before showing a name or path, the helper reads the
-process's own start time and compares it. When they differ, the identifier was
-recycled, so the details are withheld and the entry says the process identifier
-no longer matches; run the control again to query again. This prevents attributes of an
-unrelated process from being presented as the holder.
+The query reports each holder's identifier together with the process start time
+it observed. Before showing a name or path, the helper reads the process's own
+start time and compares it. When they differ, the identifier was recycled, so the
+details are withheld and the entry says the process identifier changed while the
+list was read; run the control again to query again. This prevents attributes of
+an unrelated process from being presented as the holder.
 
 ## Bounded query
 
@@ -92,7 +112,7 @@ saying more were available; if the list changes without the buffer ever being
 large enough, the query fails with an instruction to run the control again. The
 session is ended on every exit path, including the failure paths.
 
-## Success, failure and cancellation
+## Success and failure
 
 | Exit code | Meaning |
 |---|---|
@@ -105,13 +125,14 @@ session is ended on every exit path, including the failure paths.
 | `7` | the elevation request did not complete in time |
 
 The helper runs the query, shows the modal report dialog and exits once the
-user dismisses it, so the presentation is bounded by the manifest `timeout_ms`.
-Every failure writes its reason to the helper's standard error, which Seer
-shows in a toast over the preview window; a failure never opens a dialog.
+user dismisses it. Every failure is shown by the helper in its own system
+message box and also written to stderr for tests; Seer shows no failure toast
+because it stopped observing the helper at launch. The exit codes above are the
+helper's own contract; the host does not read them.
 
-Cancellation: Seer cancels by terminating the helper's process tree. The
-inspection holds no child process and never modifies the file, so cancellation
-cannot leave partial work behind.
+Cancellation: there is nothing for the host to cancel. It neither waits for nor
+terminates the helper's process tree. The inspection holds no child process and
+never modifies the file.
 
 ## What this package deliberately does not do
 
@@ -128,7 +149,7 @@ No third-party dependency. The one non-default system import is `Rstrtmgr.dll`,
 the Windows Restart Manager. The package contains only `plugin.json` and
 `file_lock_info.exe`, and the VC++ runtime is linked statically, so `dumpbin
 -dependents` on the shipped helper lists only `ole32`, `SHELL32`, `USER32`,
-`ADVAPI32`, `GDI32`, `KERNEL32` and `Rstrtmgr.dll`.
+`ADVAPI32`, `KERNEL32` and `Rstrtmgr.dll`.
 
 ## Build and test
 
@@ -146,17 +167,21 @@ out-of-repo `-B` directory instead.
 wording for the empty, populated, truncated, identity-changed, elevated and
 failed cases, the real Restart Manager backend against a file nobody holds and
 against a file held exclusively by a controlled process, and the failed-query
-contract of the presentation: a query that failed opens no dialog, exits with
-the query's own code and explains itself on the host's failure channel. The
+contract of the presentation: a query that failed opens no result dialog, exits
+with the query's own code and explains itself in the helper's error dialog. The
 dialog itself is modal, so the success path is covered by the manual
 acceptance list below instead of an automated check.
 
 ## Install and acceptance
 
 ```powershell
-cmake --install "<your-build-dir>" --prefix dist
-Compress-Archive -Path dist/* -DestinationPath file-lock-info-1.0.0.zip
+cmake --build --preset default --target filelock_package
 ```
+
+The package target runs the manifest contract test first and then writes
+`dist/file-lock-info-1.1.0.zip`, whose root holds `plugin.json`, the helper and
+`README.md`. `cmake --install "<your-build-dir>" --prefix dist` still produces
+the same tree when an installed layout is what you need.
 
 Verified in this repository:
 
@@ -170,18 +195,18 @@ Manual acceptance still required on a real Seer installation:
 
 - Enable the package, open a document in another application, and confirm the
   report dialog names that application and its executable path.
-- Query a file that no one holds and confirm the exact "No users reported by
-  Restart Manager." wording appears in the dialog.
+- Query a file that no one holds and confirm the exact "No application reported."
+  wording and the single limitation line below it appear in the dialog.
 - Run the control again after opening the file in a second application and
   confirm the new holder appears in the dialog.
-- Confirm the dialog carries the full report, including the standing
-  limitation note.
+- Confirm every holder is listed with its name, identifier, executable path and
+  start time, and that an unreadable path adds nothing beyond the single
+  administrator line at the end.
 - Add `--admin` in Seer's Arguments editor and confirm the UAC prompt appears,
-  that cancelling it leaves Seer open and produces a failure toast explaining
-  that nothing was queried, and
+  that cancelling it leaves Seer open and produces the helper's own error dialog
+  explaining that nothing was queried, and
   that accepting it shows a report resolved at the elevated privilege level.
 - Confirm the helper exits as soon as the dialog is dismissed, and that the
-  presentation stays inside the manifest `timeout_ms` however long the dialog
-  stays open.
+  report can stay open as long as the user needs: the host applies no timeout.
 - Confirm disabling the package removes the control and uninstalling removes the
   files.

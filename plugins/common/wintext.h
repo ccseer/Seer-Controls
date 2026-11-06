@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "usererror.h"
+
 // Text helpers used by the native Control helpers.
 //
 // Case-insensitive comparison goes through CompareStringOrdinal instead of
@@ -76,7 +78,7 @@ inline std::wstring trim(const std::wstring &value)
     return value.substr(begin, end - begin);
 }
 
-// Win32 error codes reach the user as part of a Control failure toast, so they
+// Win32 error codes are shown in the helper's own error dialog, so they
 // are rendered as text with the code kept as a suffix: a bare number is only
 // diagnosable by whoever wrote the call.
 inline std::wstring systemErrorMessage(const DWORD error)
@@ -171,16 +173,20 @@ inline std::wstring bound(const std::wstring &value, const size_t limit)
            + std::to_wstring(value.size() - limit) + L" characters omitted]";
 }
 
-// The host reads a failed Control action's stderr and shows it to the user, so
-// this is the only channel a helper has for explaining a refusal it exits on.
-// The text is bounded before it is encoded, because the host truncates anyway
-// and an unbounded capture would only waste the write.
+// The host no longer captures a Control helper's stderr. This channel is kept
+// for diagnostics and CTest; the helper shows the user-visible refusal itself.
+// The text is bounded before it is encoded, because an error dialog cannot
+// show an unbounded diagnostic.
 inline void writeStandardError(const std::wstring &message,
-                               const size_t limit = 256)
+                               const size_t limit = 256,
+                               bool notify = true)
 {
     const std::wstring bounded = bound(message, limit);
     if (bounded.empty()) {
         return;
+    }
+    if (notify) {
+        WinUserError::showErrorDialog(bounded);
     }
     const int bytesNeeded
         = WideCharToMultiByte(CP_ACP, 0, bounded.c_str(),

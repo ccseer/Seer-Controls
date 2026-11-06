@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "dpi.h"
 #include "wincmd.h"
 #include "winexit.h"
 #include "wintext.h"
@@ -14,18 +15,20 @@
 //
 // COM initialization and the "started with no command line" exit code are
 // identical in every package, so only the package's own runner is supplied. The runner turns an argument list into the
-// exit code the host compares against the manifest's success_exit_codes.
+// exit code used by the helper's own tests; the host never reads it.
 namespace ControlEntry {
 
 template<typename Invoke>
 int run(Invoke invoke)
 {
+    WinDpi::enablePerMonitorV2();
+
     const HRESULT comResult = CoInitializeEx(
         nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
     // An empty argument list means CommandLineToArgvW failed, not that the
     // caller passed nothing: the host always passes at least --input. Every
-    // nonzero exit has to explain itself on stderr, and this is the one path in
+    // nonzero exit has to explain itself to the user, and this is the one path in
     // the shared entry point that never reaches a package runner.
     const auto arguments = WinCmd::commandLineArguments();
     int result = WinExit::kUsage;
